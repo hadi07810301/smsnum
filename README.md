@@ -38,6 +38,16 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 - SMS center, support tickets (reply/close), all transactions
 - Settings: site name, announcement bar, minimum recharge, referral %, number timers, payment method details, admin login, reset data
 
+## Automatic crypto payments
+
+USDT **BEP20** and **TRC20** recharges are verified on the blockchain automatically (Admin → Settings → Automatic crypto payments):
+
+- The customer pastes the TxID (or explorer link). The site checks it's a successful USDT transfer **to your wallet**, waits for the required confirmations (BEP20), and adds the amount that actually arrived.
+- Reused TxIDs are blocked; transfers to another wallet or of another token are rejected.
+- Not confirmed yet? It is re-checked every few seconds and credited as soon as it confirms (gives up after 6 hours and waits for admin review).
+- Uses free public services: BNB Chain public RPC (`eth_getTransactionReceipt`) and TronGrid. No API keys needed (optional TronGrid key / custom BSC RPC for higher limits).
+- **Binance Pay** stays manual (admin approves).
+
 ## API providers (real numbers)
 
 Admin → **API Providers** lets you connect a real SMS number provider:

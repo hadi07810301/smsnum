@@ -2,6 +2,7 @@
 // Replace these functions with real API calls when you connect a server.
 import { useSyncExternalStore } from 'react'
 import * as P from './providers.js'
+import { verifyDeposit, normalizeTx } from './chain.js'
 
 const KEY = 'smsnum_db_v1'
 
@@ -13,9 +14,9 @@ const MIN = 60 * 1000
 // to match your provider's own code list.
 const SVC_CODES = { WhatsApp: 'wa', Telegram: 'tg', 'Google / Gmail': 'go', Facebook: 'fb', Instagram: 'ig', TikTok: 'lf', 'X (Twitter)': 'tw', Discord: 'ds', Microsoft: 'mm', Amazon: 'am', Uber: 'ub', Snapchat: 'fu', LinkedIn: 'tn', Viber: 'vi', WeChat: 'wb', Signal: 'bw', Netflix: 'nf', Shopee: 'ka', Line: 'me', Yahoo: 'mb', 'Other / Any service': 'ot' }
 const CTRY_ISO = { 'us-nv': 'us', 'us-v': 'us', uk: 'gb', ca: 'ca', hk: 'hk', id: 'id', au: 'au' }
-const BEP20_METHOD = { id: 'bep20', name: 'USDT (BEP20)', network: 'BNB Smart Chain (BEP20)', details: '0xc6a794577ffcd2307c04107642ce17f465356b85', qr: true, enabled: true }
-const TRC20_METHOD = { id: 'usdt', name: 'USDT (TRC20)', network: 'Tron (TRC20)', details: 'TWnEb8Fdy4xqjfk8nqHXYSUo8XrqRvmheh', qr: true, enabled: true }
-const BINANCE_PAY_METHOD = { id: 'binance', name: 'Binance Pay', network: 'Binance Pay ID', details: '414012888', qr: false, enabled: true }
+const BEP20_METHOD = { id: 'bep20', name: 'USDT (BEP20)', network: 'BNB Smart Chain (BEP20)', details: '0xc6a794577ffcd2307c04107642ce17f465356b85', qr: true, chain: 'bep20', enabled: true }
+const TRC20_METHOD = { id: 'usdt', name: 'USDT (TRC20)', network: 'Tron (TRC20)', details: 'TWnEb8Fdy4xqjfk8nqHXYSUo8XrqRvmheh', qr: true, chain: 'trc20', enabled: true }
+const BINANCE_PAY_METHOD = { id: 'binance', name: 'Binance Pay', network: 'Binance Pay ID', details: '414012888', qr: false, chain: '', enabled: true }
 const PLACEHOLDERS = ['TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'Pay ID: 000000000', '01XXXXXXXXX (Send Money)']
 export const DEFAULT_PLANS = [
   { id: 'd1', label: '1 day', minutes: 1440, mult: 3, enabled: true },
@@ -70,6 +71,14 @@ function migrate(d) {
     d.settings.paymentMethods = pm
     d.settings.pmVersion = 2
   }
+  // automatic crypto verification settings
+  if (d.settings.autoVerify == null) d.settings.autoVerify = true
+  if (d.settings.minConfirmations == null) d.settings.minConfirmations = 3
+  d.settings.bscRpc ??= ''
+  d.settings.tronApiKey ??= ''
+  d.settings.paymentMethods.forEach((m) => {
+    if (m.chain == null) m.chain = m.id === 'bep20' || /bep20/i.test(m.name) ? 'bep20' : m.id === 'usdt' || /trc20/i.test(m.name) ? 'trc20' : ''
+  })
   d.services.forEach((x) => { x.rentPrices ||= {} })
   return d
 }
@@ -414,16 +423,69 @@ if (typeof window !== 'undefined') {
 }
 
 // ---------- wallet ----------
-export function requestRecharge({ amount, method, txid }) {
+// Submit a recharge. Crypto methods (BEP20/TRC20) are checked on the blockchain and credited
+// automatically; other methods wait for admin approval.
+// Returns { status: 'ok' | 'pending' | 'invalid' | 'manual', amount?, reason? }
+export async function requestRecharge({ amount, method, txid }) {
+  const u = currentUser()
+  amount = Number(amount)
+  if (!u) throw new Error('Please log in')
+  if (!(amount >= db.settings.minRecharge)) throw new Error(`Minimum recharge is ${money(db.settings.minRecharge)}`)
+  const m = db.settings.paymentMethods.find((x) => x.name === method && x.enabled)
+  if (!m) throw new Error('No payment method is available right now')
+  if (!txid.trim()) throw new Error('Enter the transaction ID (TxID / hash)')
+  const chain = db.settings.autoVerify ? m.chain || '' : ''
+  let tx = txid.trim()
+  if (chain) {
+    tx = normalizeTx(chain, tx)
+    if (!tx) throw new Error(chain === 'bep20' ? 'Enter a valid BEP20 transaction hash (starts with 0x, 66 characters)' : 'Enter a valid TRC20 transaction ID (64 characters)')
+  }
+  if (db.recharges.some((r) => r.txid.toLowerCase() === tx.toLowerCase() && r.status !== 'rejected')) throw new Error('This transaction ID has already been used')
+  const id = uid('r_')
+  update((d) => { d.recharges.unshift({ id, userId: u.id, amount, method, txid: tx, chain, to: m.details, auto: !!chain, checks: 0, status: 'pending', at: now() }) })
+  if (!chain) return { status: 'manual' }
+  return checkRecharge(id)
+}
+
+const checking = new Set()
+export async function checkRecharge(id) {
+  const r = db.recharges.find((x) => x.id === id)
+  if (!r || r.status !== 'pending' || !r.chain || checking.has(id)) return { status: r?.status || 'invalid' }
+  checking.add(id)
+  let res
+  try {
+    res = await verifyDeposit({ chain: r.chain, tx: r.txid, to: r.to, settings: db.settings })
+  } catch {
+    res = { status: 'pending', reason: 'Could not reach the blockchain right now. It will be checked again automatically.' }
+  }
+  checking.delete(id)
   update((d) => {
-    const u = currentUser(d)
-    amount = Number(amount)
-    if (!u) throw new Error('Please log in')
-    if (!(amount >= d.settings.minRecharge)) throw new Error(`Minimum recharge is ${money(d.settings.minRecharge)}`)
-    if (!method) throw new Error('No payment method is available right now')
-    if (!txid.trim()) throw new Error('Enter the transaction ID (TxID / hash)')
-    d.recharges.unshift({ id: uid('r_'), userId: u.id, amount, method, txid: txid.trim(), status: 'pending', at: now() })
+    const x = d.recharges.find((y) => y.id === id)
+    if (!x || x.status !== 'pending') return
+    x.checks = (x.checks || 0) + 1
+    x.lastCheck = now()
+    x.note = res.reason || ''
+    if (res.amount != null) x.received = res.amount
+    if (res.status === 'ok') {
+      x.requested = x.amount
+      x.amount = Math.floor(res.amount * 100) / 100 // credit what actually arrived
+      creditRecharge(d, x, 'Auto-confirmed')
+    } else if (res.status === 'invalid') {
+      x.status = 'rejected'
+      x.autoRejected = true
+    } else if (now() - x.at > 6 * 3600 * 1000) {
+      x.note = 'Not confirmed after 6 hours — waiting for admin review.'
+      x.gaveUp = true
+    }
   })
+  return res
+}
+
+// background re-check of pending crypto deposits
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    db.recharges.filter((r) => r.status === 'pending' && r.chain && !r.gaveUp && (!r.lastCheck || now() - r.lastCheck > 14000)).forEach((r) => checkRecharge(r.id))
+  }, 8000)
 }
 
 export function transferBalance(email, amount) {
@@ -466,15 +528,13 @@ export function replyTicket(id, text, from) {
 export const closeTicket = (id) => update((d) => { d.tickets.find((x) => x.id === id).status = 'closed' })
 
 // ---------- admin ----------
-export function approveRecharge(id) {
-  update((d) => {
-    const r = d.recharges.find((x) => x.id === id)
-    if (r.status !== 'pending') return
+function creditRecharge(d, r, how) {
     r.status = 'approved'
+    r.approvedBy = how
     const u = d.users.find((x) => x.id === r.userId)
     if (!u) return
     u.balance = Math.round((u.balance + r.amount) * 100) / 100
-    addTx(d, u.id, 'credit', r.amount, `Recharge via ${r.method}`)
+    addTx(d, u.id, 'credit', r.amount, `Recharge via ${r.method}${how === 'Auto-confirmed' ? ' (auto)' : ''}`)
     if (u.referredBy) {
       const ref = d.users.find((x) => x.id === u.referredBy)
       const bonus = Math.round(r.amount * d.settings.referralPercent) / 100
@@ -484,6 +544,13 @@ export function approveRecharge(id) {
         addTx(d, ref.id, 'credit', bonus, `Referral bonus from ${u.email}`)
       }
     }
+}
+export function approveRecharge(id, amount) {
+  update((d) => {
+    const r = d.recharges.find((x) => x.id === id)
+    if (!r || r.status !== 'pending') return
+    if (amount != null && Number(amount) > 0) { r.requested = r.amount; r.amount = Math.round(Number(amount) * 100) / 100 }
+    creditRecharge(d, r, 'Admin')
   })
 }
 export const rejectRecharge = (id) => update((d) => { const r = d.recharges.find((x) => x.id === id); if (r.status === 'pending') r.status = 'rejected' })

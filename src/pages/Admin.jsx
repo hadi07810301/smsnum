@@ -3,8 +3,9 @@ import { usePath, navigate } from '../router.jsx'
 import {
   useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser,
   saveService, deleteService, saveCountry, deleteCountry, saveSettings, adminCancelOrder, replyTicket, closeTicket, toggleTheme, resetDB, priceFor,
-  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan,
+  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan, checkRecharge,
 } from '../store.js'
+import { explorerTx } from '../chain.js'
 import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
 import { Badge, Stat, Empty, Modal, attempt, toast, Flag } from '../ui.jsx'
 import { Thread } from './Dashboard.jsx'
@@ -226,9 +227,14 @@ function Recharges({ db }) {
             <tbody>
               {list.map((r) => (
                 <tr key={r.id}>
-                  <td className="small">{email(r.userId)}</td><td><b>{money(r.amount)}</b></td><td>{r.method}</td>
-                  <td className="mono small">{r.txid}</td><td className="small">{fmtDate(r.at)}</td><td><Badge s={r.status} /></td>
+                  <td className="small">{email(r.userId)}</td>
+                  <td><b>{money(r.amount)}</b>{r.requested && r.requested !== r.amount && <div className="muted small">entered {money(r.requested)}</div>}{r.received != null && r.status === 'pending' && <div className="muted small">on-chain {r.received}</div>}</td>
+                  <td>{r.method}{r.auto && <div><span className="badge info">⚡ auto</span></div>}</td>
+                  <td className="mono small">{explorerTx(r.chain, r.txid) ? <a className="link" href={explorerTx(r.chain, r.txid)} target="_blank" rel="noreferrer">{r.txid.slice(0, 12)}…</a> : r.txid}{r.note && <div className="muted small cell-note">{r.note}</div>}</td>
+                  <td className="small">{fmtDate(r.at)}</td>
+                  <td><Badge s={r.status} />{r.approvedBy && <div className="muted small">{r.approvedBy}</div>}</td>
                   <td className="btn-row">
+                    {r.status === 'pending' && r.chain && <button className="btn ghost sm" onClick={async () => { const x = await checkRecharge(r.id); toast(x.status === 'ok' ? 'Confirmed and credited' : x.reason || x.status, x.status === 'invalid' ? 'error' : 'success') }}>Check now</button>}
                     {r.status === 'pending' && <>
                       <button className="btn sm" onClick={() => { approveRecharge(r.id); toast('Approved — balance added') }}>Approve</button>
                       <button className="btn danger sm" onClick={() => { rejectRecharge(r.id); toast('Rejected') }}>Reject</button>
@@ -601,6 +607,7 @@ function Settings({ db }) {
   const s = db.settings
   const [f, setF] = useState({ siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
   const [pm, setPm] = useState(s.paymentMethods)
+  const [av, setAv] = useState({ autoVerify: s.autoVerify ?? true, minConfirmations: s.minConfirmations ?? 3, bscRpc: s.bscRpc || '', tronApiKey: s.tronApiKey || '' })
   const [plans, setPlans] = useState(s.rentPlans || [])
   const [shortMult, setShortMult] = useState(s.extendMult ?? 0.5)
   const [resendPct, setResendPct] = useState(Math.round((s.resendMult ?? 0.5) * 100))
@@ -662,6 +669,15 @@ function Settings({ db }) {
             <p className="muted small">Change the short extension's length under General → Extend time.</p>
             <button className="btn full">Save resend & extension prices</button>
           </form>
+          <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings({ autoVerify: av.autoVerify, minConfirmations: Number(av.minConfirmations) || 1, bscRpc: av.bscRpc, tronApiKey: av.tronApiKey }); toast('Auto-verification settings saved') }}>
+            <h3>⚡ Automatic crypto payments</h3>
+            <label className="check"><input type="checkbox" checked={av.autoVerify} onChange={(e) => setAv({ ...av, autoVerify: e.target.checked })} /> Verify USDT BEP20 / TRC20 payments on the blockchain and add balance automatically</label>
+            <p className="muted small">Checks that the TxID is a successful USDT transfer to your wallet, credits the amount that actually arrived, and blocks reused TxIDs. Binance Pay stays manual.</p>
+            <label>BEP20 confirmations required<input className="input" type="number" min="1" max="50" value={av.minConfirmations} onChange={(e) => setAv({ ...av, minConfirmations: e.target.value })} /></label>
+            <label>BSC RPC URL (optional, default = public BNB Chain nodes)<input className="input mono small" placeholder="https://bsc-dataseed.bnbchain.org" value={av.bscRpc} onChange={(e) => setAv({ ...av, bscRpc: e.target.value })} /></label>
+            <label>TronGrid API key (optional, for higher limits)<input className="input mono small" value={av.tronApiKey} onChange={(e) => setAv({ ...av, tronApiKey: e.target.value })} /></label>
+            <button className="btn full">Save auto-verification</button>
+          </form>
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
             if (pm.some((m) => m.enabled && !m.details.trim())) return toast('An enabled method has no address. Fill it in or switch it off.', 'error')
@@ -682,7 +698,14 @@ function Settings({ db }) {
                     <input className="input" placeholder="Network (e.g. BNB Smart Chain (BEP20))" value={m.network || ''} onChange={(e) => setM('network', e.target.value)} />
                   </div>
                   <input className="input mono small" placeholder="Wallet address / account number / Pay ID" value={m.details} onChange={(e) => setM('details', e.target.value)} />
-                  <label className="check small"><input type="checkbox" checked={!!m.qr} onChange={(e) => setM('qr', e.target.checked)} /> Show QR code</label>
+                  <div className="btn-row">
+                    <label className="check small"><input type="checkbox" checked={!!m.qr} onChange={(e) => setM('qr', e.target.checked)} /> Show QR code</label>
+                    <select className="input small" style={{ width: 'auto' }} value={m.chain || ''} onChange={(e) => setM('chain', e.target.value)}>
+                      <option value="">Manual approval</option>
+                      <option value="bep20">⚡ Auto-verify USDT BEP20</option>
+                      <option value="trc20">⚡ Auto-verify USDT TRC20</option>
+                    </select>
+                  </div>
                   {m.enabled && !m.details.trim() && <span className="badge bad">Add the address before enabling</span>}
                 </div>
               )

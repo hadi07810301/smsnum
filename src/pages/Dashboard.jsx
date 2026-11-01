@@ -5,6 +5,7 @@ import {
   transferBalance, regenerateApiKey, updateProfile, createTicket, replyTicket, closeTicket, logout,
 } from '../store.js'
 import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_ } from '../ui.jsx'
+import { explorerTx } from '../chain.js'
 
 const TABS = [
   ['', '📊', 'Overview'], ['active', '📲', 'Active Numbers'], ['orders', '🧾', 'Orders'], ['sms', '💬', 'SMS History'],
@@ -273,9 +274,22 @@ function Recharge({ db, user }) {
   const [f, setF] = useState({ amount: 5, method: methods[0]?.name || '', txid: '' })
   const method = methods.find((m) => m.name === f.method)
   const mine = db.recharges.filter((r) => r.userId === user.id)
-  function submit(e) {
+  const [busy, setBusy] = useState(false)
+  const auto = db.settings.autoVerify && !!method?.chain
+  async function submit(e) {
     e.preventDefault()
-    if (attempt(() => requestRecharge(f), 'Recharge request sent. Balance is added after admin approval.')) setF({ ...f, txid: '' })
+    setBusy(true)
+    try {
+      const r = await requestRecharge(f)
+      if (r.status === 'ok') toast_(`✅ Payment confirmed on the blockchain — ${money(Math.floor(r.amount * 100) / 100)} added to your balance!`)
+      else if (r.status === 'pending') toast_('⏳ ' + (r.reason || 'Waiting for the blockchain.') + ' Your balance updates automatically.')
+      else if (r.status === 'invalid') toast_('❌ ' + r.reason, 'error')
+      else toast_('Recharge request sent. Balance is added after admin approval.')
+      if (r.status !== 'invalid') setF({ ...f, txid: '' })
+    } catch (err) {
+      toast_(err.message, 'error')
+    }
+    setBusy(false)
   }
   return (
     <>
@@ -322,9 +336,12 @@ function Recharge({ db, user }) {
           )}
           {!methods.length && <div className="alert warn">No payment method is available right now. Please contact support.</div>}
           <label>{method && /binance pay/i.test(method.name) ? 'Binance Pay Order ID' : 'Transaction ID (TxID / hash)'}
-            <input className="input mono" placeholder="Paste the transaction / reference ID" value={f.txid} onChange={(e) => setF({ ...f, txid: e.target.value })} />
+            <input className="input mono" placeholder={method?.chain === 'bep20' ? '0x… (66 characters) or BscScan link' : method?.chain === 'trc20' ? '64-character TxID or Tronscan link' : 'Paste the transaction / reference ID'} value={f.txid} onChange={(e) => setF({ ...f, txid: e.target.value })} />
           </label>
-          <button className="btn full">Submit recharge</button>
+          <button className="btn full" disabled={busy}>
+            {busy ? <><span className="spinner light" /> Checking the blockchain…</> : auto ? '⚡ Verify & add balance' : 'Submit recharge'}
+          </button>
+          {auto && <p className="auto-note">⚡ <b>Instant:</b> after you paste the TxID we check the blockchain and add your balance automatically, usually within a minute.</p>}
           <p className="muted small">Minimum {money(db.settings.minRecharge)}. Requests are reviewed and approved by an admin.</p>
         </form>
         <div>
@@ -333,8 +350,14 @@ function Recharge({ db, user }) {
             <div className="list-card">
               {mine.map((r) => (
                 <div className="list-row" key={r.id}>
-                  <div className="grow"><b>{money(r.amount)}</b> · {r.method}<div className="muted small">{fmtDate(r.at)} · TX {r.txid}</div></div>
-                  <Badge s={r.status} />
+                  <div className="grow">
+                    <b>{money(r.amount)}</b> · {r.method} {r.auto && <span className="badge info">⚡ auto</span>}
+                    <div className="muted small">{fmtDate(r.at)} · TX {explorerTx(r.chain, r.txid) ? <a className="link mono" href={explorerTx(r.chain, r.txid)} target="_blank" rel="noreferrer">{r.txid.slice(0, 10)}…{r.txid.slice(-6)}</a> : <span className="mono">{r.txid}</span>}</div>
+                    {r.status === 'pending' && r.auto && <div className="small pending-note"><span className="spinner" /> {r.note || 'Checking the blockchain…'}</div>}
+                    {r.status === 'rejected' && r.note && <div className="small neg">{r.note}</div>}
+                    {r.requested && r.requested !== r.amount && <div className="small muted">You entered {money(r.requested)}, received {money(r.amount)}</div>}
+                  </div>
+                  <Badge s={r.status}>{r.status === 'approved' && r.approvedBy === 'Auto-confirmed' ? 'confirmed' : r.status}</Badge>
                 </div>
               ))}
             </div>
