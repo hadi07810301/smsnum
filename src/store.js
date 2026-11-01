@@ -24,6 +24,8 @@ export const DEFAULT_PLANS = [
   { id: 'd30', label: '30 days', minutes: 43200, mult: 20, enabled: true },
   { id: 'd90', label: '90 days', minutes: 129600, mult: 45, enabled: true },
 ]
+const US_AREAS = '212, 213, 305, 310, 312, 347, 415, 469, 512, 617, 646, 702, 713, 718, 786, 818, 917, 929'
+const AREA_CODES = { 'us-nv': US_AREAS, 'us-v': US_AREAS, ca: '403, 416, 437, 514, 587, 604, 613, 647, 778, 905' }
 const CTRY_CODES = { 'us-nv': '187', 'us-v': '12', uk: '16', ca: '36', hk: '14', id: '6', au: '175' }
 
 const COUNTRIES = [
@@ -56,6 +58,9 @@ function migrate(d) {
   d.settings.rentPlans.forEach((p) => { p.priceType ||= 'mult'; if (p.price == null) p.price = 1 })
   if (d.settings.extendMult == null) d.settings.extendMult = 0.5
   if (d.settings.resendMult == null) d.settings.resendMult = 0.5
+  if (d.settings.areaCodeFeePct == null) d.settings.areaCodeFeePct = 20
+  if (d.settings.maxQty == null) d.settings.maxQty = 10
+  d.countries.forEach((x) => { if (x.areaCodes == null) x.areaCodes = AREA_CODES[x.id] || '' })
   // payment methods: add the BEP20 wallet, switch off unfilled placeholder details
   if (!d.settings.paymentMethods.some((m) => m.id === 'bep20')) d.settings.paymentMethods.unshift({ ...BEP20_METHOD })
   d.settings.paymentMethods.forEach((m) => {
@@ -160,11 +165,37 @@ export const fmtDate = (t) => new Date(t).toLocaleString()
 export const priceFor = (service, country) => Math.round(service.price * country.mult * 100) / 100
 export const currentUser = (d = db) => d.users.find((u) => u.id === d.session.userId) || null
 
-function randNumber(country) {
+function randNumber(country, areaCode) {
   const digits = country.code === '+852' ? 8 : country.code === '+62' ? 11 : 10
-  let s = ''
-  for (let i = 0; i < digits; i++) s += i === 0 ? 1 + Math.floor(Math.random() * 9) : Math.floor(Math.random() * 10)
+  let s = areaCode ? String(areaCode) : ''
+  for (let i = s.length; i < digits; i++) s += i === 0 ? 1 + Math.floor(Math.random() * 9) : Math.floor(Math.random() * 10)
   return country.code + ' ' + s
+}
+
+// ---------- buy options: area code, period, quantity ----------
+export const areaCodesOf = (c) => (c?.areaCodes || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean)
+export const supportsAreaCode = (c, d = db) => d.settings.numberSource !== 'api' && areaCodesOf(c).length > 0
+export function periodOptions(d = db) {
+  return [{ id: 'std', label: `${d.settings.orderMinutes} minutes`, minutes: d.settings.orderMinutes, standard: true }, ...(d.settings.rentPlans || []).filter((p) => p.enabled)]
+}
+// Full price breakdown for a purchase
+export function quote(serviceId, countryId, { areaCode = '', periodId = 'std', qty = 1 } = {}, d = db) {
+  const s = d.services.find((x) => x.id === serviceId), c = d.countries.find((x) => x.id === countryId)
+  if (!s || !c) return null
+  const unit = priceFor(s, c)
+  const areaFee = areaCode ? Math.round(unit * (d.settings.areaCodeFeePct ?? 20)) / 100 : 0
+  const period = periodOptions(d).find((p) => p.id === periodId) || periodOptions(d)[0]
+  const periodCost = period.standard ? 0 : planCost(period, unit, s)
+  const each = Math.round((unit + areaFee + periodCost) * 100) / 100
+  qty = Math.max(1, Math.min(d.settings.maxQty || 10, Math.floor(Number(qty) || 1)))
+  return { unit, areaFee, period, periodCost, each, qty, total: Math.round(each * qty * 100) / 100 }
+}
+function validateArea(c, areaCode, d) {
+  if (!areaCode) return ''
+  if (d.settings.numberSource === 'api') throw new Error('Custom area codes are not available for this number source')
+  if (!/^[2-9]\d{2}$/.test(String(areaCode))) throw new Error('Area code must be 3 digits (e.g. 212)')
+  if (!areaCodesOf(c).length) throw new Error('Custom area codes are not available for this country')
+  return String(areaCode)
 }
 
 function addTx(d, userId, type, amount, note) {
@@ -176,7 +207,7 @@ function addTx(d, userId, type, amount, note) {
 // (the first code was already delivered).
 function refundWaiting(d, o, status, note) {
   const resent = o.pendingCharge != null
-  const amount = resent ? o.pendingCharge : o.price
+  const amount = resent ? o.pendingCharge : o.paid ?? o.price
   o.status = resent ? 'completed' : status
   o.pendingCharge = null
   const u = d.users.find((x) => x.id === o.userId)
@@ -220,28 +251,44 @@ export function adminLogin(user, pass) {
 export const adminLogout = () => update((d) => { d.session.admin = false })
 
 // ---------- orders ----------
-export function buyNumber(serviceId, countryId) {
+function makeOrder(d, u, s, c, q, extra) {
+  const order = {
+    id: uid('o_'), userId: u.id, serviceId: s.id, countryId: c.id, service: s.name, icon: s.icon, country: c.name, flag: c.flag,
+    price: q.unit, paid: q.each, status: 'waiting', sms: [], createdAt: now(),
+    expiresAt: now() + q.period.minutes * MIN,
+    rented: !q.period.standard && q.period.minutes >= 1440,
+    periodLabel: q.period.label,
+    ...extra,
+  }
+  d.orders.unshift(order)
+  const bits = [q.areaFee ? `area ${extra.areaCode}` : '', q.period.standard ? '' : q.period.label].filter(Boolean).join(', ')
+  addTx(d, u.id, 'debit', q.each, `Number for ${s.name} (${c.name})${bits ? ' · ' + bits : ''}`)
+  return order
+}
+
+// Demo numbers (instant). opts: { areaCode, periodId, qty }
+export function buyNumber(serviceId, countryId, opts = {}) {
   return update((d) => {
     const u = currentUser(d)
     if (!u) throw new Error('Please log in first')
     const s = d.services.find((x) => x.id === serviceId)
     const c = d.countries.find((x) => x.id === countryId)
     if (!s || !c || !s.enabled || !c.enabled) throw new Error('This service is not available right now')
-    if (s.stock <= 0) throw new Error('Out of stock, try another country')
-    const price = priceFor(s, c)
-    if (u.balance < price) throw new Error(`Insufficient balance. You need ${money(price)}.`)
-    u.balance = Math.round((u.balance - price) * 100) / 100
-    s.stock -= 1
-    const order = {
-      id: uid('o_'), userId: u.id, serviceId, countryId, service: s.name, icon: s.icon, country: c.name, flag: c.flag,
-      number: randNumber(c), price, status: 'waiting', sms: [], createdAt: now(),
-      expiresAt: now() + d.settings.orderMinutes * MIN,
-      // demo: simulated SMS arrives 8-25s after purchase
-      smsAt: now() + (8 + Math.random() * 17) * 1000,
+    const areaCode = validateArea(c, opts.areaCode, d)
+    const q = quote(serviceId, countryId, { ...opts, areaCode }, d)
+    if (s.stock < q.qty) throw new Error(s.stock <= 0 ? 'Out of stock, try another country' : `Only ${s.stock} numbers left`)
+    if (u.balance < q.total) throw new Error(`Insufficient balance. You need ${money(q.total)}.`)
+    u.balance = Math.round((u.balance - q.total) * 100) / 100
+    s.stock -= q.qty
+    const orders = []
+    for (let i = 0; i < q.qty; i++) {
+      orders.push(makeOrder(d, u, s, c, q, {
+        number: randNumber(c, areaCode), areaCode,
+        // demo: simulated SMS arrives 8-25s after purchase
+        smsAt: now() + (8 + Math.random() * 17 + i * 3) * 1000,
+      }))
     }
-    d.orders.unshift(order)
-    addTx(d, u.id, 'debit', price, `Number for ${s.name} (${c.name})`)
-    return order
+    return orders
   })
 }
 
@@ -251,29 +298,30 @@ const providerOf = (o) => db.providers.find((p) => p.id === o.providerId)
 const quiet = (promise) => promise && promise.catch && promise.catch(() => {})
 
 // Buy a number: uses the live API provider when "Live API" mode is on, otherwise demo numbers
-export async function purchase(serviceId, countryId) {
-  if (db.settings.numberSource !== 'api') return buyNumber(serviceId, countryId)
+// Buy one or more numbers. Returns { orders, failed, error }
+export async function purchase(serviceId, countryId, opts = {}) {
+  if (db.settings.numberSource !== 'api') return { orders: buyNumber(serviceId, countryId, opts), failed: 0 }
   const p = activeProvider()
   if (!p) throw new Error('Live API mode is on but no active provider is set (Admin → API Providers)')
   const u = currentUser(), s = db.services.find((x) => x.id === serviceId), c = db.countries.find((x) => x.id === countryId)
   if (!u) throw new Error('Please log in first')
   if (!s || !c || !s.enabled || !c.enabled) throw new Error('This service is not available right now')
-  const price = priceFor(s, c)
-  if (u.balance < price) throw new Error(`Insufficient balance. You need ${money(price)}.`)
-  const got = await P.getNumber(p, s.pcode, c.pcode) // throws on provider errors, balance untouched
-  return update((d) => {
-    const user = currentUser(d)
-    user.balance = Math.round((user.balance - price) * 100) / 100
-    const order = {
-      id: uid('o_'), userId: user.id, serviceId, countryId, service: s.name, icon: s.icon, country: c.name, flag: c.flag,
-      number: got.number, price, status: 'waiting', sms: [], createdAt: now(),
-      expiresAt: now() + d.settings.orderMinutes * MIN, smsAt: null,
-      live: true, providerId: p.id, providerName: p.name, providerOrderId: got.id, providerService: s.pcode,
-    }
-    d.orders.unshift(order)
-    addTx(d, user.id, 'debit', price, `Number for ${s.name} (${c.name})`)
-    return order
-  })
+  validateArea(c, opts.areaCode, db)
+  const q = quote(serviceId, countryId, opts)
+  if (u.balance < q.total) throw new Error(`Insufficient balance. You need ${money(q.total)}.`)
+  const orders = []
+  let error = null
+  for (let i = 0; i < q.qty; i++) {
+    let got
+    try { got = await P.getNumber(p, s.pcode, c.pcode) } catch (e) { error = e; break } // only successful numbers are charged
+    orders.push(update((d) => {
+      const user = currentUser(d)
+      user.balance = Math.round((user.balance - q.each) * 100) / 100
+      return makeOrder(d, user, s, c, q, { number: got.number, smsAt: null, live: true, providerId: p.id, providerName: p.name, providerOrderId: got.id, providerService: s.pcode })
+    }))
+  }
+  if (!orders.length) throw error || new Error('Could not get a number')
+  return { orders, failed: q.qty - orders.length, error: error?.message }
 }
 
 export function cancelOrder(id) {

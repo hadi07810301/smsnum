@@ -20,6 +20,9 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 - Sign up / log in, referral links (`#/register?ref=CODE`)
 - Dark mode, mobile bottom navigation
 
+**Buying numbers**
+- Pick a custom **area code** (US/Canada lists editable per country, +20% surcharge editable), **quantity** (up to 10, editable) and **number period** (20 minutes up to 90 days) with a live total
+
 **User dashboard**
 - Overview: balance, orders, active numbers, referrals, low-balance warning
 - Active numbers with live countdown, copy number / code, cancel with refund

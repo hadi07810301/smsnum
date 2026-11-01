@@ -479,7 +479,7 @@ function Countries({ db }) {
   const [edit, setEdit] = useState(null)
   return (
     <>
-      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', iso: '', code: '+', pcode: '', mult: 1, enabled: true })}>＋ Add country</button></div>
+      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', iso: '', code: '+', pcode: '', areaCodes: '', mult: 1, enabled: true })}>＋ Add country</button></div>
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th>Country</th><th>API code</th><th>Dial code</th><th>Price multiplier</th><th>Status</th><th></th></tr></thead>
@@ -501,7 +501,7 @@ function Countries({ db }) {
         <Modal title={edit.id ? 'Edit country' : 'New country'} onClose={() => setEdit(null)}>
           <EditForm
             value={edit}
-            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['iso', 'Country ISO code for flag image (e.g. us, gb, bd)'], ['code', 'Dial code'], ['pcode', 'Provider country code (e.g. 187)'], ['mult', 'Price multiplier', 'number']]}
+            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['iso', 'Country ISO code for flag image (e.g. us, gb, bd)'], ['code', 'Dial code'], ['pcode', 'Provider country code (e.g. 187)'], ['mult', 'Price multiplier', 'number'], ['areaCodes', 'Area codes customers can pick (comma separated, empty = off)']]}
             onSave={(v) => { if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveCountry(v) }, 'Country saved')) setEdit(null) }}
             onDelete={edit.id && (() => { deleteCountry(edit.id); setEdit(null); toast('Country deleted') })}
           />
@@ -605,7 +605,7 @@ function Transactions({ db }) {
 
 function Settings({ db }) {
   const s = db.settings
-  const [f, setF] = useState({ siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
+  const [f, setF] = useState({ areaCodeFeePct: s.areaCodeFeePct ?? 20, maxQty: s.maxQty ?? 10, siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
   const [pm, setPm] = useState(s.paymentMethods)
   const [av, setAv] = useState({ autoVerify: s.autoVerify ?? true, minConfirmations: s.minConfirmations ?? 3, bscRpc: s.bscRpc || '', tronApiKey: s.tronApiKey || '' })
   const [plans, setPlans] = useState(s.rentPlans || [])
@@ -626,6 +626,8 @@ function Settings({ db }) {
           <label>Referral commission (%)<input className="input" type="number" value={f.referralPercent} onChange={num('referralPercent')} /></label>
           <label>Number active time (minutes)<input className="input" type="number" value={f.orderMinutes} onChange={num('orderMinutes')} /></label>
           <label>Extend time (minutes)<input className="input" type="number" value={f.extendMinutes} onChange={num('extendMinutes')} /></label>
+          <label>Custom area code surcharge (%)<input className="input" type="number" min="0" value={f.areaCodeFeePct} onChange={num('areaCodeFeePct')} /></label>
+          <label>Max numbers per purchase<input className="input" type="number" min="1" max="100" value={f.maxQty} onChange={num('maxQty')} /></label>
           <button className="btn full">Save settings</button>
         </form>
         <div>
