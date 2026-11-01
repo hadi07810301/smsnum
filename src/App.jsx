@@ -4,7 +4,7 @@ import { useDB, currentUser, money, toggleTheme, logout } from './store.js'
 import { Toasts } from './ui.jsx'
 import Home from './pages/Home.jsx'
 import Buy from './pages/Buy.jsx'
-import Pricing from './pages/Pricing.jsx'
+import Rent from './pages/Rent.jsx'
 import { Login, Register } from './pages/Auth.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Admin from './pages/Admin.jsx'
@@ -20,7 +20,7 @@ function Header() {
         <nav className="nav">
           <Link to="/">Home</Link>
           <Link to="/buy">Buy Numbers</Link>
-          <Link to="/pricing">Pricing</Link>
+          <Link to="/rent">Rent Numbers</Link>
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/api">API</Link>
         </nav>
@@ -55,7 +55,8 @@ function Footer() {
           <p className="muted small">Virtual numbers for receiving SMS verification codes. Pay only for what you use.</p>
         </div>
         <div className="footer-links">
-          <Link to="/pricing">Pricing</Link>
+          <Link to="/buy">Buy Numbers</Link>
+          <Link to="/rent">Rent Numbers</Link>
           <Link to="/api">API Docs</Link>
           <Link to="/terms">Terms of Service</Link>
           <Link to="/privacy">Privacy Policy</Link>
@@ -72,7 +73,8 @@ function BottomNav() {
   return (
     <nav className="bottom-nav">
       <Link to="/">🏠<span>Home</span></Link>
-      <Link to="/buy">📲<span>Numbers</span></Link>
+      <Link to="/buy">📲<span>Buy</span></Link>
+      <Link to="/rent">📅<span>Rent</span></Link>
       <Link to="/dashboard">📊<span>Dashboard</span></Link>
       <Link to="/dashboard/profile">👤<span>Account</span></Link>
     </nav>
@@ -90,7 +92,8 @@ export default function App() {
   let page
   if (path === '/') page = <Home />
   else if (path === '/buy') page = <Buy />
-  else if (path === '/pricing') page = <Pricing />
+  else if (path === '/rent') page = <Rent />
+  else if (path === '/pricing') page = <Rent />
   else if (path === '/login') page = <Login />
   else if (path === '/register') page = <Register />
   else if (path.startsWith('/dashboard')) page = <Dashboard />

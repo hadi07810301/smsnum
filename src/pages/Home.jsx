@@ -22,7 +22,7 @@ export default function Home() {
             </p>
             <div className="hero-cta rise" style={{ '--d': 3 }}>
               <Link to="/buy" className="btn lg shine magnetic">Get a number <span className="arrow">→</span></Link>
-              <Link to="/pricing" className="btn ghost lg magnetic">View pricing</Link>
+              <Link to="/rent" className="btn ghost lg magnetic">📅 Rent a number</Link>
             </div>
             <div className="hero-stats rise" style={{ '--d': 4 }}>
               <div><b><CountUp value={99} suffix="%" /></b><span>Delivery rate</span></div>

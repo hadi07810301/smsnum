@@ -16,7 +16,7 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 ## Features
 
 **Website**
-- Home page, Buy Numbers (country filter + search), Pricing table, API docs, Terms, Privacy
+- Home page, Buy Numbers (country filter + search), **Rent Numbers** (1–90 day rentals), API docs, Terms, Privacy
 - Sign up / log in, referral links (`#/register?ref=CODE`)
 - Dark mode, mobile bottom navigation
 
@@ -98,6 +98,6 @@ src/
   ui.jsx           toasts, modal, badges, helpers
   styles.css       all styles (light + dark theme)
   pages/
-    Home.jsx  Buy.jsx  Pricing.jsx  Auth.jsx  Legal.jsx
+    Home.jsx  Buy.jsx  Rent.jsx  Auth.jsx  Legal.jsx
     Dashboard.jsx  Admin.jsx
 ```

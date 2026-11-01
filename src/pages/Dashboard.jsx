@@ -8,7 +8,7 @@ import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toa
 import { explorerTx } from '../chain.js'
 
 const TABS = [
-  ['', '📊', 'Overview'], ['active', '📲', 'Active Numbers'], ['orders', '🧾', 'Orders'], ['sms', '💬', 'SMS History'],
+  ['', '📊', 'Overview'], ['active', '📲', 'Active Numbers'], ['rentals', '📅', 'My Rentals'], ['orders', '🧾', 'Orders'], ['sms', '💬', 'SMS History'],
   ['recharge', '💳', 'Recharge'], ['transactions', '📜', 'Transactions'], ['transfer', '🔁', 'Transfer'],
   ['referrals', '🤝', 'Referrals'], ['api', '🔌', 'API Access'], ['support', '🎧', 'Support'], ['profile', '👤', 'Profile'],
 ]
@@ -30,7 +30,7 @@ export default function Dashboard() {
   }
 
   const orders = db.orders.filter((o) => o.userId === user.id)
-  const Page = { '': Overview, active: Active, orders: Orders, sms: Sms, recharge: Recharge, transactions: Transactions, transfer: Transfer, referrals: Referrals, api: Api, support: Support, profile: Profile }[tab] || Overview
+  const Page = { '': Overview, active: Active, rentals: Rentals, orders: Orders, sms: Sms, recharge: Recharge, transactions: Transactions, transfer: Transfer, referrals: Referrals, api: Api, support: Support, profile: Profile }[tab] || Overview
 
   return (
     <div className="container dash">
@@ -83,6 +83,8 @@ function Overview({ db, user, orders }) {
   )
 }
 
+const appName = (o) => (/any service/i.test(o.service) ? 'any app' : o.service)
+
 function OrderCards({ orders, db }) {
   return (
     <div className="order-cards">
@@ -102,7 +104,7 @@ function OrderCards({ orders, db }) {
               <div className="code-row"><span className="mono code">{m.code}</span><button className="btn sm" onClick={() => copy(m.code)}>Copy code</button></div>
             </div>
           )) : null}
-          {o.status === 'waiting' && <div className="waiting"><span className="spinner" /> {o.sms.length ? 'Waiting for a new code… request it again on ' + o.service + ' now.' : `Waiting for SMS… use this number on ${o.service} now.`}</div>}
+          {o.status === 'waiting' && <div className="waiting"><span className="spinner" /> {o.sms.length ? 'Waiting for a new code… request it again on ' + appName(o) + ' now.' : `Waiting for SMS… use this number on ${appName(o)} now.`}</div>}
           {o.rented && o.sms.length > 0 && <div className="waiting small"><span className="spinner" /> Listening for new SMS until {fmtDate(o.expiresAt)}</div>}
           <div className="row-between order-foot">
             <span className="muted small">{o.rented ? 'Rental ends in' : 'Expires in'} <Countdown to={o.expiresAt} /></span>
@@ -220,6 +222,18 @@ function ExtendModal({ o, onClose }) {
         ? <a className="btn full" href="#/dashboard/recharge" onClick={onClose}>Insufficient balance — Recharge</a>
         : <button className="btn full" onClick={confirm} disabled={!plan}>Extend for {plan ? money(plan.cost) : ''}</button>}
     </Modal>
+  )
+}
+
+function Rentals({ db, orders }) {
+  const active = orders.filter((o) => o.rented && ['waiting', 'received'].includes(o.status))
+  const past = orders.filter((o) => o.rented && !['waiting', 'received'].includes(o.status))
+  return (
+    <>
+      <div className="row-between"><h1>My rentals</h1><Link to="/rent" className="btn sm">📅 Rent a number</Link></div>
+      {active.length ? <OrderCards orders={active} db={db} /> : <Empty icon="📅" text="You have no rented numbers. Rent one to keep the same number for days." />}
+      {past.length > 0 && <><h2 className="h2">Ended rentals</h2><OrderTable orders={past} /></>}
+    </>
   )
 }
 

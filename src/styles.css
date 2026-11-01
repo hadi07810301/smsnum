@@ -611,3 +611,23 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .area-search-icon { position: absolute; z-index: 1; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: .95rem; }
 .area-clear { position: absolute; z-index: 1; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: var(--surface-2); width: 26px; height: 26px; border-radius: 50%; font-size: .75rem; color: var(--muted); }
 .area-clear:hover { background: var(--bad-bg); color: var(--bad); }
+
+/* rent page */
+.rent-hero { padding: 56px 0 28px; background: radial-gradient(900px 360px at 15% 0%, var(--primary-soft), transparent 70%); }
+.rent-hero h1 { font-size: clamp(1.9rem, 4vw, 2.9rem); margin-bottom: 14px; }
+.rent-perks { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.rent-perks span { background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px; font-size: .88rem; font-weight: 500; }
+.rent-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; padding-bottom: 20px; }
+.rent-config { display: grid; gap: 16px; }
+.rent-step h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.step-no { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: var(--primary-ink); display: grid; place-items: center; font-size: .85rem; font-weight: 800; }
+.rent-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.rent-plan { position: relative; display: grid; justify-items: center; gap: 2px; padding: 18px 10px 14px; border: 1.5px solid var(--border); border-radius: 14px; background: var(--surface); transition: border-color .2s, background .2s, box-shadow .25s var(--ease), transform .25s var(--ease); }
+.rent-plan.on { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 10px 26px -12px color-mix(in srgb, var(--primary) 60%, transparent); }
+.rent-days { font-size: 2.1rem; font-weight: 800; line-height: 1; }
+.rent-price { margin-top: 8px; font-size: 1.15rem; font-weight: 800; color: var(--primary); }
+.rent-summary { position: sticky; top: 84px; display: grid; gap: 12px; }
+.rent-summary h3 { margin: 0; }
+.rent-summary .info-list { margin: 0; }
+.rent-sum-head { display: flex; gap: 10px; align-items: center; }
+@media (max-width: 900px) { .rent-layout { grid-template-columns: 1fr; } .rent-summary { position: static; } }
