@@ -491,10 +491,9 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .to-top:hover { transform: translateY(-3px) !important; }
 @media (max-width: 900px) { .to-top { bottom: 80px; right: 14px; } }
 
-/* list rows: accent bar slides in */
-.list-row { position: relative; }
-.list-row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--primary); transform: scaleY(0); transition: transform .3s var(--ease); }
-.list-row:hover::before { transform: scaleY(1); }
+/* list rows: soft tint + content nudges right on hover */
+.list-row { transition: background .25s, padding-left .3s var(--ease); }
+.list-row:hover { background: color-mix(in srgb, var(--primary) 6%, transparent); padding-left: 22px; }
 .list-row .service-icon { transition: transform .3s var(--ease); }
 .list-row:hover .service-icon { transform: scale(1.12) rotate(-6deg); }
 
