@@ -55,14 +55,13 @@ function BuyModal({ service, country: c, onClose }) {
   const user = currentUser(db)
   const live = db.settings.numberSource === 'api'
   const maxQty = Math.min(db.settings.maxQty || 10, live ? 99 : Math.max(1, service.stock))
-  const [area, setArea] = useState('') // '' = any
-  const [customArea, setCustomArea] = useState('')
+  const [area, setArea] = useState('') // '' = random
   const [periodId, setPeriodId] = useState('std')
   const [qty, setQty] = useState(1)
   const [busy, setBusy] = useState(false)
   const areaOK = supportsAreaCode(c, db)
   const codes = areaCodesOf(c)
-  const areaCode = area === 'custom' ? customArea : area
+  const areaCode = area
   const areaValid = !areaCode || /^[2-9]\d{2}$/.test(areaCode)
   const q = quote(service.id, c.id, { areaCode: areaValid ? areaCode : '', periodId, qty }, db)
   const periods = periodOptions(db).map((p) => ({ ...p, cost: quote(service.id, c.id, { periodId: p.id }, db).periodCost }))
@@ -98,17 +97,15 @@ function BuyModal({ service, country: c, onClose }) {
       {areaOK && (
         <section className="buy-section">
           <div className="buy-label"><b>📍 Area code</b><span className="muted small">Specific area code +{db.settings.areaCodeFeePct ?? 20}%</span></div>
-          <div className="chips tight">
-            <button type="button" className={'chip' + (area === '' ? ' on' : '')} onClick={() => setArea('')}>🎲 Any (random)</button>
-            {codes.map((code) => (
-              <button type="button" key={code} className={'chip mono' + (area === code ? ' on' : '')} onClick={() => setArea(code)}>{code}</button>
-            ))}
-            <button type="button" className={'chip' + (area === 'custom' ? ' on' : '')} onClick={() => setArea('custom')}>✏️ Custom</button>
+          <div className="area-search">
+            <span className="area-search-icon">🔍</span>
+            <input className={'input mono' + (areaCode && !areaValid ? ' invalid' : '')} inputMode="numeric" maxLength={3}
+              placeholder="Random number — or type an area code (e.g. 415)" value={areaCode}
+              onChange={(e) => setArea(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-label="Area code" />
+            {areaCode && <button type="button" className="area-clear" aria-label="Clear area code" onClick={() => setArea('')}>✕</button>}
           </div>
-          {area === 'custom' && (
-            <input className={'input mono area-input' + (customArea && !areaValid ? ' invalid' : '')} inputMode="numeric" maxLength={3} placeholder="e.g. 415" autoFocus
-              value={customArea} onChange={(e) => setCustomArea(e.target.value.replace(/\D/g, '').slice(0, 3))} />
-          )}
+          {!areaCode && <p className="muted small">🎲 You'll get a random number. Type a 3-digit area code to choose one.</p>}
+          {areaCode && !areaValid && <p className="small neg">{areaCode.length < 3 ? 'Type all 3 digits' : 'Area codes start with 2–9'}</p>}
           {areaCode && areaValid && <p className="muted small">Your number will look like <b className="mono">{c.code} ({areaCode}) •••-••••</b></p>}
         </section>
       )}
