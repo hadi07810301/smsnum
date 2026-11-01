@@ -12,6 +12,13 @@ const MIN = 60 * 1000
 // Default provider codes (SMS-Activate style). Edit them in Admin → Services / Countries
 // to match your provider's own code list.
 const SVC_CODES = { WhatsApp: 'wa', Telegram: 'tg', 'Google / Gmail': 'go', Facebook: 'fb', Instagram: 'ig', TikTok: 'lf', 'X (Twitter)': 'tw', Discord: 'ds', Microsoft: 'mm', Amazon: 'am', Uber: 'ub', Snapchat: 'fu', LinkedIn: 'tn', Viber: 'vi', WeChat: 'wb', Signal: 'bw', Netflix: 'nf', Shopee: 'ka', Line: 'me', Yahoo: 'mb', 'Other / Any service': 'ot' }
+const CTRY_ISO = { 'us-nv': 'us', 'us-v': 'us', uk: 'gb', ca: 'ca', hk: 'hk', id: 'id', au: 'au' }
+export const DEFAULT_PLANS = [
+  { id: 'd1', label: '1 day', minutes: 1440, mult: 3, enabled: true },
+  { id: 'd7', label: '7 days', minutes: 10080, mult: 8, enabled: true },
+  { id: 'd30', label: '30 days', minutes: 43200, mult: 20, enabled: true },
+  { id: 'd90', label: '90 days', minutes: 129600, mult: 45, enabled: true },
+]
 const CTRY_CODES = { 'us-nv': '187', 'us-v': '12', uk: '16', ca: '36', hk: '14', id: '6', au: '175' }
 
 const COUNTRIES = [
@@ -39,7 +46,8 @@ function migrate(d) {
   d.settings.numberSource ||= 'demo'
   d.settings.activeProvider ||= null
   d.services.forEach((x) => { if (x.pcode == null) x.pcode = SVC_CODES[x.name] || '' })
-  d.countries.forEach((x) => { if (x.pcode == null) x.pcode = CTRY_CODES[x.id] || '' })
+  d.countries.forEach((x) => { if (x.pcode == null) x.pcode = CTRY_CODES[x.id] || ''; if (x.iso == null) x.iso = CTRY_ISO[x.id] || '' })
+  d.settings.rentPlans ||= DEFAULT_PLANS
   return d
 }
 
@@ -236,18 +244,33 @@ export function cancelOrder(id) {
   })
 }
 
-export function extendOrder(id) {
-  update((d) => {
+// Extension options: a short top-up plus the long-term rental plans set by the admin
+export function extendOptions(o, d = db) {
+  return [
+    { id: 'short', label: `${d.settings.extendMinutes} minutes`, minutes: d.settings.extendMinutes, mult: 0.5 },
+    ...(d.settings.rentPlans || []).filter((p) => p.enabled),
+  ].map((p) => ({ ...p, cost: Math.round(o.price * p.mult * 100) / 100 }))
+}
+export const canExtend = (o) => ['waiting', 'received', 'completed'].includes(o.status)
+
+export function extendOrder(id, planId = 'short') {
+  return update((d) => {
     const o = d.orders.find((x) => x.id === id)
     const u = currentUser(d)
-    if (!o || !u || !['waiting', 'received'].includes(o.status)) throw new Error('This number can no longer be extended')
-    const cost = Math.round(o.price * 50) / 100
-    if (u.balance < cost) throw new Error('Insufficient balance to extend')
+    if (!o || !u || !canExtend(o)) throw new Error('This number can no longer be extended')
+    const plan = extendOptions(o, d).find((p) => p.id === planId)
+    if (!plan) throw new Error('This extension plan is not available')
+    const cost = plan.cost
+    if (u.balance < cost) throw new Error(`Insufficient balance. You need ${money(cost)} to extend.`)
     u.balance = Math.round((u.balance - cost) * 100) / 100
-    o.expiresAt = Math.max(o.expiresAt, now()) + d.settings.extendMinutes * MIN
+    o.expiresAt = Math.max(o.expiresAt, now()) + plan.minutes * MIN
+    if (plan.minutes >= 1440) o.rented = true
+    if (o.status === 'completed') o.status = 'received'
+    o.extensions = [...(o.extensions || []), { plan: plan.label, cost, at: now() }]
     if (o.status === 'received' && !o.live) o.smsAt = now() + (10 + Math.random() * 20) * 1000
     if (o.live) { const p = d.providers.find((x) => x.id === o.providerId); if (p) quiet(P.requestAnotherSms(p, o.providerOrderId)) }
-    addTx(d, u.id, 'debit', cost, `Extend ${o.number} +${d.settings.extendMinutes} min`)
+    addTx(d, u.id, 'debit', cost, `Extend ${o.number} +${plan.label}`)
+    return plan
   })
 }
 

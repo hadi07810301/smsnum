@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from '../router.jsx'
 import { useDB, priceFor, money } from '../store.js'
+import { Flag } from '../ui.jsx'
 
 export default function Pricing() {
   const db = useDB()
@@ -15,7 +16,7 @@ export default function Pricing() {
       <div className="table-wrap">
         <table className="table">
           <thead>
-            <tr><th>Service</th>{countries.map((c) => <th key={c.id}>{c.flag} {c.name}</th>)}</tr>
+            <tr><th>Service</th>{countries.map((c) => <th key={c.id}><Flag country={c} /> {c.name}</th>)}</tr>
           </thead>
           <tbody>
             {services.map((s) => (

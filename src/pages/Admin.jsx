@@ -6,7 +6,7 @@ import {
   saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider,
 } from '../store.js'
 import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
-import { Badge, Stat, Empty, Modal, attempt, toast } from '../ui.jsx'
+import { Badge, Stat, Empty, Modal, attempt, toast, Flag } from '../ui.jsx'
 import { Thread } from './Dashboard.jsx'
 
 const TABS = [
@@ -192,11 +192,11 @@ function Orders({ db }) {
               {list.map((o) => (
                 <tr key={o.id}>
                   <td className="small">{email(o.userId)}</td>
-                  <td>{o.icon} {o.service}<div className="muted small">{o.flag} {o.country}</div></td>
+                  <td>{o.icon} {o.service}<div className="muted small"><Flag id={o.countryId} /> {o.country}</div></td>
                   <td className="mono">{o.number}<div className="muted small">{o.live ? `🔌 ${o.providerName} #${o.providerOrderId}` : 'demo'}</div></td>
                   <td>{money(o.price)}</td>
                   <td className="mono">{o.sms[o.sms.length - 1]?.code || '—'}</td>
-                  <td><Badge s={o.status} /></td>
+                  <td><Badge s={o.status} />{o.rented && <div className="muted small">📅 rented until {new Date(o.expiresAt).toLocaleDateString()}</div>}</td>
                   <td className="small">{fmtDate(o.createdAt)}</td>
                   <td>{['waiting', 'received'].includes(o.status) && <button className="btn danger sm" onClick={() => adminCancelOrder(o.id)}>Cancel</button>}</td>
                 </tr>
@@ -414,14 +414,14 @@ function Countries({ db }) {
   const [edit, setEdit] = useState(null)
   return (
     <>
-      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', code: '+', pcode: '', mult: 1, enabled: true })}>＋ Add country</button></div>
+      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', iso: '', code: '+', pcode: '', mult: 1, enabled: true })}>＋ Add country</button></div>
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th>Country</th><th>API code</th><th>Dial code</th><th>Price multiplier</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {db.countries.map((c) => (
               <tr key={c.id}>
-                <td><b>{c.flag} {c.name}</b></td><td className="mono">{c.pcode || '—'}</td><td className="mono">{c.code}</td><td>×{c.mult}</td>
+                <td><b><Flag country={c} /> {c.name}</b></td><td className="mono">{c.pcode || '—'}</td><td className="mono">{c.code}</td><td>×{c.mult}</td>
                 <td><Badge s={c.enabled ? 'active' : 'closed'}>{c.enabled ? 'enabled' : 'disabled'}</Badge></td>
                 <td className="btn-row">
                   <button className="btn ghost sm" onClick={() => setEdit(c)}>Edit</button>
@@ -436,7 +436,7 @@ function Countries({ db }) {
         <Modal title={edit.id ? 'Edit country' : 'New country'} onClose={() => setEdit(null)}>
           <EditForm
             value={edit}
-            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['code', 'Dial code'], ['pcode', 'Provider country code (e.g. 187)'], ['mult', 'Price multiplier', 'number']]}
+            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['iso', 'Country ISO code for flag image (e.g. us, gb, bd)'], ['code', 'Dial code'], ['pcode', 'Provider country code (e.g. 187)'], ['mult', 'Price multiplier', 'number']]}
             onSave={(v) => { if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveCountry(v) }, 'Country saved')) setEdit(null) }}
             onDelete={edit.id && (() => { deleteCountry(edit.id); setEdit(null); toast('Country deleted') })}
           />
@@ -542,6 +542,8 @@ function Settings({ db }) {
   const s = db.settings
   const [f, setF] = useState({ siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
   const [pm, setPm] = useState(s.paymentMethods)
+  const [plans, setPlans] = useState(s.rentPlans || [])
+  const setPlan = (i, k, val) => setPlans(plans.map((p, j) => (j === i ? { ...p, [k]: val } : p)))
   const [cred, setCred] = useState({ adminUser: s.adminUser, adminPass: '' })
   const num = (k) => (e) => setF({ ...f, [k]: Number(e.target.value) })
   return (
@@ -559,6 +561,29 @@ function Settings({ db }) {
           <button className="btn full">Save settings</button>
         </form>
         <div>
+          <form className="card form" onSubmit={(e) => {
+            e.preventDefault()
+            const clean = plans.filter((p) => p.label.trim()).map((p) => ({ ...p, minutes: Math.max(1, Math.round(Number(p.days) ? Number(p.days) * 1440 : p.minutes)), mult: Number(p.mult) || 0, days: undefined }))
+            saveSettings({ rentPlans: clean }); setPlans(clean); toast('Extension plans saved')
+          }}>
+            <h3>Number extension plans</h3>
+            <p className="muted small">Customers can keep a number longer. Price = number price × multiplier. Example: a $0.24 number with ×45 costs {money(0.24 * 45)} for its plan.</p>
+            <div className="plan-edit head"><span>Label</span><span>Days</span><span>× Price</span><span>On</span><span /></div>
+            {plans.map((p, i) => (
+              <div className="plan-edit" key={p.id}>
+                <input className="input" value={p.label} onChange={(e) => setPlan(i, 'label', e.target.value)} />
+                <input className="input" type="number" min="1" step="1" value={p.days ?? Math.round(p.minutes / 1440)} onChange={(e) => setPlan(i, 'days', e.target.value)} />
+                <input className="input" type="number" min="0" step="0.1" value={p.mult} onChange={(e) => setPlan(i, 'mult', e.target.value)} />
+                <input type="checkbox" aria-label="Enabled" checked={p.enabled} onChange={(e) => setPlan(i, 'enabled', e.target.checked)} />
+                <button type="button" className="icon-btn" aria-label="Remove plan" onClick={() => setPlans(plans.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+            <div className="btn-row">
+              <button type="button" className="btn ghost sm" onClick={() => setPlans([...plans, { id: 'p' + Date.now(), label: 'New plan', minutes: 1440, days: 1, mult: 3, enabled: true }])}>＋ Add plan</button>
+            </div>
+            <p className="muted small">The short {s.extendMinutes}-minute extension (50% of the price) is always offered too; change its length under General.</p>
+            <button className="btn full">Save extension plans</button>
+          </form>
           <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings({ paymentMethods: pm }); toast('Payment methods saved') }}>
             <h3>Payment methods</h3>
             {pm.map((m, i) => (

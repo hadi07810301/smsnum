@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { navigate } from '../router.jsx'
 import { useDB, currentUser, priceFor, money, purchase } from '../store.js'
-import { Modal, Empty, toast } from '../ui.jsx'
+import { Modal, Empty, toast, Flag } from '../ui.jsx'
 
 export default function Buy() {
   const db = useDB()
@@ -37,7 +37,7 @@ export default function Buy() {
       <div className="chips" role="tablist">
         {countries.map((x) => (
           <button key={x.id} className={'chip' + (x.id === c?.id ? ' on' : '')} onClick={() => setCountry(x.id)}>
-            {x.flag} {x.name}
+            <Flag country={x} /> {x.name}
           </button>
         ))}
       </div>
@@ -51,7 +51,7 @@ export default function Buy() {
               <span className="service-icon">{s.icon}</span>
               <div className="grow">
                 <b>{s.name}</b>
-                <div className="muted small">{c.flag} {c.name} · {live ? 'Instant delivery' : s.stock > 0 ? `${s.stock} available` : 'Out of stock'}</div>
+                <div className="muted small"><Flag country={c} /> {c.name} · {live ? 'Instant delivery' : s.stock > 0 ? `${s.stock} available` : 'Out of stock'}</div>
               </div>
               <b className="price">{money(priceFor(s, c))}</b>
               <button className="btn sm" disabled={!live && s.stock <= 0} onClick={() => (user ? setPick(s) : navigate('/login'))}>Buy</button>
@@ -65,7 +65,7 @@ export default function Buy() {
           <div className="confirm-box">
             <div className="service-icon xl">{pick.icon}</div>
             <h3>{pick.name}</h3>
-            <p className="muted">{c.flag} {c.name}</p>
+            <p className="muted"><Flag country={c} /> {c.name}</p>
           </div>
           <ul className="info-list">
             <li><span>Price</span><b>{money(priceFor(pick, c))}</b></li>

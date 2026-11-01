@@ -1,6 +1,7 @@
 import { Link } from '../router.jsx'
 import { useDB, money, priceFor } from '../store.js'
 import { CountUp, Rotator } from '../motion.jsx'
+import { Flag } from '../ui.jsx'
 
 export default function Home() {
   const db = useDB()
@@ -83,7 +84,7 @@ export default function Home() {
         <h2 className="section-title reveal">Why choose {db.settings.siteName}</h2>
         <div className="grid-3">
           {[
-            ['🌍', 'Many countries', db.countries.map((c) => c.flag).join(' ')],
+            ['🌍', 'Many countries', <span className="flag-row">{db.countries.map((c) => <Flag key={c.id} country={c} />)}</span>],
             ['♻️', 'Auto refunds', 'Waiting numbers that never get an SMS are refunded to your wallet automatically.'],
             ['⏱️', 'Extend sessions', 'Need more time? Extend any active number for 50% of its price.'],
             ['🤝', 'Referral rewards', `Earn ${db.settings.referralPercent}% of every recharge your friends make.`],

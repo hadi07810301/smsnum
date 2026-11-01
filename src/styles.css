@@ -527,3 +527,25 @@ label.check { display: flex; align-items: center; gap: 8px; }
 @media (prefers-reduced-motion: reduce) {
   .marquee-track, .provider-card.is-active::after, .btn.lg::before { animation: none; }
 }
+
+/* flags */
+.flag { width: 20px; height: 15px; object-fit: cover; border-radius: 3px; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); display: inline-block; }
+.flag-row { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* extend modal */
+.extend-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin: 12px 0; }
+.plan { position: relative; display: grid; gap: 2px; justify-items: center; text-align: center; padding: 14px 8px 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); transition: border-color .2s, transform .25s var(--ease), box-shadow .25s var(--ease), background .2s; }
+.plan:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--primary) 50%, var(--border)); }
+.plan.on { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--primary) 60%, transparent); }
+.plan.on .plan-price { color: var(--primary); }
+.plan-label { font-weight: 600; font-size: .9rem; }
+.plan-price { font-size: 1.2rem; font-weight: 800; transition: color .2s; }
+.plan-tag { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--primary); color: var(--primary-ink); font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.plan.on { animation: pop .3s var(--ease); }
+
+/* admin plan editor */
+.plan-edit { display: grid; grid-template-columns: 1.6fr .8fr .8fr auto auto; gap: 8px; align-items: center; }
+.plan-edit.head { font-size: .78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.plan-edit .input { padding: 8px 10px; }
+.flag-code { display: inline-block; font-size: .65rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; background: var(--surface-2); color: var(--muted); vertical-align: 1px; letter-spacing: .03em; }

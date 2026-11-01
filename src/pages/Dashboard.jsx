@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, usePath, navigate } from '../router.jsx'
 import {
-  useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, finishOrder, requestRecharge,
+  useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, extendOptions, canExtend, finishOrder, requestRecharge,
   transferBalance, regenerateApiKey, updateProfile, createTicket, replyTicket, closeTicket, logout,
 } from '../store.js'
-import { Badge, Countdown, copy, Empty, Stat, attempt, Modal } from '../ui.jsx'
+import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_ } from '../ui.jsx'
 
 const TABS = [
   ['', '📊', 'Overview'], ['active', '📲', 'Active Numbers'], ['orders', '🧾', 'Orders'], ['sms', '💬', 'SMS History'],
@@ -88,8 +88,8 @@ function OrderCards({ orders, db }) {
       {orders.map((o) => (
         <div className={'card order-card tilt soft' + (o.status === 'received' ? ' got-sms' : '')} key={o.id}>
           <div className="row-between">
-            <div><span className="service-icon">{o.icon}</span> <b>{o.service}</b> <span className="muted small">{o.flag} {o.country}</span></div>
-            <Badge s={o.status}>{o.status === 'waiting' ? '⏳ Waiting for SMS' : '✅ SMS received'}</Badge>
+            <div><span className="service-icon">{o.icon}</span> <b>{o.service}</b> <span className="muted small"><Flag id={o.countryId} /> {o.country}</span></div>
+            <Badge s={o.rented ? 'info' : o.status}>{o.rented ? '📅 Rented' : o.status === 'waiting' ? '⏳ Waiting for SMS' : '✅ SMS received'}</Badge>
           </div>
           <div className="number-line">
             <span className="mono big">{o.number}</span>
@@ -101,13 +101,14 @@ function OrderCards({ orders, db }) {
               <div className="code-row"><span className="mono code">{m.code}</span><button className="btn sm" onClick={() => copy(m.code)}>Copy code</button></div>
             </div>
           )) : <div className="waiting"><span className="spinner" /> Waiting for SMS… use this number on {o.service} now.</div>}
+          {o.rented && o.sms.length > 0 && <div className="waiting small"><span className="spinner" /> Listening for new SMS until {fmtDate(o.expiresAt)}</div>}
           <div className="row-between order-foot">
-            <span className="muted small">Expires in <Countdown to={o.expiresAt} /></span>
+            <span className="muted small">{o.rented ? 'Rental ends in' : 'Expires in'} <Countdown to={o.expiresAt} /></span>
             <div className="btn-row">
-              <button className="btn ghost sm" onClick={() => attempt(() => extendOrder(o.id), `Extended by ${db.settings.extendMinutes} minutes`)}>⏱️ Extend ({money(o.price / 2)})</button>
+              <ExtendButton o={o} />
               {o.status === 'waiting'
                 ? <button className="btn danger sm" onClick={() => attempt(() => cancelOrder(o.id), 'Cancelled and refunded')}>Cancel</button>
-                : <button className="btn sm" onClick={() => finishOrder(o.id)}>Done</button>}
+                : !o.rented && <button className="btn sm" onClick={() => finishOrder(o.id)}>Done</button>}
             </div>
           </div>
         </div>
@@ -121,21 +122,79 @@ function OrderTable({ orders }) {
   return (
     <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Service</th><th>Number</th><th>Price</th><th>Code</th><th>Status</th><th>Date</th></tr></thead>
+        <thead><tr><th>Service</th><th>Number</th><th>Price</th><th>Code</th><th>Status</th><th>Date</th><th></th></tr></thead>
         <tbody>
           {orders.map((o) => (
             <tr key={o.id}>
-              <td>{o.icon} {o.service}<div className="muted small">{o.flag} {o.country}</div></td>
+              <td>{o.icon} {o.service}<div className="muted small"><Flag id={o.countryId} /> {o.country}</div></td>
               <td className="mono">{o.number}</td>
               <td>{money(o.price)}</td>
               <td className="mono">{o.sms[o.sms.length - 1]?.code || '—'}</td>
-              <td><Badge s={o.status} /></td>
+              <td>
+                {o.rented && ['waiting', 'received'].includes(o.status) ? <Badge s="info">📅 Rented</Badge> : <Badge s={o.status} />}
+                {o.rented && ['waiting', 'received'].includes(o.status) && <div className="muted small">until {new Date(o.expiresAt).toLocaleDateString()}</div>}
+              </td>
               <td className="small">{fmtDate(o.createdAt)}</td>
+              <td>{canExtend(o) && <ExtendButton o={o} />}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function ExtendButton({ o }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button className="btn ghost sm" onClick={() => setOpen(true)}>⏱️ Extend</button>
+      {open && <ExtendModal o={o} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+function ExtendModal({ o, onClose }) {
+  const db = useDB()
+  const user = currentUser(db)
+  const order = db.orders.find((x) => x.id === o.id) || o
+  const plans = extendOptions(order, db)
+  const [pick, setPick] = useState(plans[plans.length - 1]?.id)
+  const plan = plans.find((p) => p.id === pick)
+  const newEnd = plan && Math.max(order.expiresAt, Date.now()) + plan.minutes * 60000
+  function confirm() {
+    const r = attempt(() => extendOrder(order.id, pick))
+    if (r) { toast_(`Extended by ${plan.label} — active until ${new Date(newEnd).toLocaleString()}`); onClose() }
+  }
+  return (
+    <Modal title="Extend your number" onClose={onClose}>
+      <div className="extend-head">
+        <span className="service-icon">{order.icon}</span>
+        <div><b className="mono">{order.number}</b><div className="muted small">{order.service} · <Flag id={order.countryId} /> {order.country}</div></div>
+      </div>
+      <p className="muted small">Keep this number and receive more SMS on it. Current end: <b>{fmtDate(Math.max(order.expiresAt, Date.now()))}</b></p>
+      <div className="plans" role="radiogroup">
+        {plans.map((p) => (
+          <button key={p.id} role="radio" aria-checked={pick === p.id} className={'plan' + (pick === p.id ? ' on' : '') + (p.minutes >= 129600 ? ' best' : '')} onClick={() => setPick(p.id)}>
+            {p.minutes >= 129600 && <span className="plan-tag">Best value</span>}
+            <span className="plan-label">{p.label}</span>
+            <span className="plan-price">{money(p.cost)}</span>
+            {p.minutes >= 1440 && <span className="muted small">{money(p.cost / (p.minutes / 1440))}/day</span>}
+          </button>
+        ))}
+      </div>
+      {plan && (
+        <ul className="info-list">
+          <li><span>New end date</span><b>{fmtDate(newEnd)}</b></li>
+          <li><span>Cost</span><b>{money(plan.cost)}</b></li>
+          <li><span>Your balance</span><b>{money(user?.balance)}</b></li>
+        </ul>
+      )}
+      {order.live && plan?.minutes >= 1440 && <p className="note small">This number comes from an API provider. Long rentals only work if your provider keeps the number for that long.</p>}
+      {user && plan && user.balance < plan.cost
+        ? <a className="btn full" href="#/dashboard/recharge" onClick={onClose}>Insufficient balance — Recharge</a>
+        : <button className="btn full" onClick={confirm} disabled={!plan}>Extend for {plan ? money(plan.cost) : ''}</button>}
+    </Modal>
   )
 }
 

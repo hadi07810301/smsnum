@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useDB } from './store.js'
 
 // ---------- toasts ----------
 let toasts = []
@@ -53,7 +54,7 @@ export function Modal({ title, onClose, children, wide }) {
 const STATUS = {
   waiting: 'warn', received: 'ok', completed: 'muted', cancelled: 'muted', expired: 'bad',
   pending: 'warn', approved: 'ok', rejected: 'bad', open: 'warn', answered: 'ok', closed: 'muted',
-  credit: 'ok', debit: 'bad', refund: 'info', active: 'ok', banned: 'bad',
+  credit: 'ok', debit: 'bad', refund: 'info', info: 'info', active: 'ok', banned: 'bad',
 }
 export const Badge = ({ s, children }) => <span className={'badge ' + (STATUS[s] || 'muted')}>{children || s}</span>
 
@@ -61,8 +62,23 @@ export function Countdown({ to }) {
   const [, setT] = useState(0)
   useEffect(() => { const i = setInterval(() => setT((x) => x + 1), 1000); return () => clearInterval(i) }, [])
   const ms = Math.max(0, to - Date.now())
+  const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000)
+  if (d >= 1) return <span className="mono">{d}d {h}h</span>
   const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000)
+  if (m >= 60) return <span className="mono">{h}h {m % 60}m</span>
   return <span className="mono">{m}:{String(s).padStart(2, '0')}</span>
+}
+
+// Real flag image (Windows can't show flag emojis), falls back to the emoji
+export function Flag({ id, country }) {
+  const db = useDB()
+  const c = country || db.countries.find((x) => x.id === id)
+  if (!c) return null
+  if (!c.iso) return <span className="flag-emoji">{c.flag}</span>
+  return (
+    <img className="flag" src={`https://flagcdn.com/w40/${c.iso.toLowerCase()}.png`} alt={c.iso.toUpperCase()} width="20" height="15" loading="lazy"
+      onError={(e) => { const sp = document.createElement('span'); sp.className = 'flag-code'; sp.textContent = c.iso.toUpperCase(); e.currentTarget.replaceWith(sp) }} />
+  )
 }
 
 export function copy(text) {
