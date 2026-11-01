@@ -48,7 +48,7 @@ export default function Dashboard() {
         ))}
         <button className="side-link" onClick={() => { logout(); navigate('/') }}><span>🚪</span>Logout</button>
       </aside>
-      <section className="dash-main">
+      <section className="dash-main tab-enter" key={tab}>
         <Page db={db} user={user} orders={orders} />
       </section>
     </div>
@@ -86,7 +86,7 @@ function OrderCards({ orders, db }) {
   return (
     <div className="order-cards">
       {orders.map((o) => (
-        <div className="card order-card" key={o.id}>
+        <div className={'card order-card' + (o.status === 'received' ? ' got-sms' : '')} key={o.id}>
           <div className="row-between">
             <div><span className="service-icon">{o.icon}</span> <b>{o.service}</b> <span className="muted small">{o.flag} {o.country}</span></div>
             <Badge s={o.status}>{o.status === 'waiting' ? '⏳ Waiting for SMS' : '✅ SMS received'}</Badge>
@@ -96,7 +96,7 @@ function OrderCards({ orders, db }) {
             <button className="btn ghost sm" onClick={() => copy(o.number.replace(/\s/g, ''))}>📋 Copy</button>
           </div>
           {o.sms.length > 0 ? o.sms.map((m, i) => (
-            <div className="sms-bubble" key={i}>
+            <div className="sms-bubble sms-new" key={i}>
               <small>{fmtDate(m.at)}</small>{m.text}
               <div className="code-row"><span className="mono code">{m.code}</span><button className="btn sm" onClick={() => copy(m.code)}>Copy code</button></div>
             </div>

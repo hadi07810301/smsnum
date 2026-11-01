@@ -34,7 +34,7 @@ export default function Buy() {
       <input className="input search" placeholder="🔍 Search services (e.g. WhatsApp)" value={q} onChange={(e) => setQ(e.target.value)} />
 
       {!c ? <Empty text="No countries available right now." /> : services.length === 0 ? <Empty icon="🔍" text="No service matches your search." /> : (
-        <div className="list-card">
+        <div className="list-card stagger" key={c?.id + q}>
           {services.map((s) => (
             <div className="list-row" key={s.id}>
               <span className="service-icon">{s.icon}</span>

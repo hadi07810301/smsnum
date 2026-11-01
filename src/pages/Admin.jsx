@@ -61,7 +61,7 @@ export default function Admin() {
             </a>
           ))}
         </aside>
-        <section className="dash-main"><Page db={db} /></section>
+        <section className="dash-main tab-enter" key={tab}><Page db={db} /></section>
       </div>
     </div>
   )
@@ -97,7 +97,7 @@ function Overview({ db }) {
             {days.map((d) => (
               <div className="bar-col" key={d.label}>
                 <span className="bar-val">{d.n}</span>
-                <div className="bar" style={{ height: (d.n / max) * 100 + '%' }} />
+                <div className="bar grow" style={{ height: (d.n / max) * 100 + '%' }} />
                 <span className="bar-label">{d.label}</span>
               </div>
             ))}

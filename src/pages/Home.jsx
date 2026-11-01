@@ -1,5 +1,6 @@
 import { Link } from '../router.jsx'
 import { useDB, money, priceFor } from '../store.js'
+import { CountUp } from '../motion.jsx'
 
 export default function Home() {
   const db = useDB()
@@ -11,53 +12,57 @@ export default function Home() {
       <section className="hero">
         <div className="container hero-inner">
           <div>
-            <span className="eyebrow">⚡ Instant virtual numbers</span>
-            <h1>Receive SMS verification codes <span className="grad">online, in seconds</span></h1>
-            <p className="lead">
+            <span className="eyebrow rise" style={{ '--d': 0 }}>⚡ Instant virtual numbers</span>
+            <h1 className="rise" style={{ '--d': 1 }}>Receive SMS verification codes <span className="grad">online, in seconds</span></h1>
+            <p className="lead rise" style={{ '--d': 2 }}>
               Get a temporary phone number for {db.services.length}+ services across {db.countries.length} countries.
               Numbers start from just <b>{money(isFinite(minPrice) ? minPrice : 0)}</b>. No subscription — pay only for what you use,
               and get an automatic refund if no SMS arrives.
             </p>
-            <div className="hero-cta">
-              <Link to="/buy" className="btn lg">Get a number →</Link>
+            <div className="hero-cta rise" style={{ '--d': 3 }}>
+              <Link to="/buy" className="btn lg shine">Get a number <span className="arrow">→</span></Link>
               <Link to="/pricing" className="btn ghost lg">View pricing</Link>
             </div>
-            <div className="hero-stats">
-              <div><b>99%</b><span>Delivery rate</span></div>
-              <div><b>&lt;3s</b><span>Avg. SMS speed</span></div>
-              <div><b>24/7</b><span>Support</span></div>
+            <div className="hero-stats rise" style={{ '--d': 4 }}>
+              <div><b><CountUp value={99} suffix="%" /></b><span>Delivery rate</span></div>
+              <div><b>&lt;<CountUp value={3} suffix="s" /></b><span>Avg. SMS speed</span></div>
+              <div><b><CountUp value={24} />/7</b><span>Support</span></div>
             </div>
           </div>
-          <div className="phone-card" aria-hidden="true">
-            <div className="phone-top"><span>🇺🇸 +1 415 555 0182</span><span className="badge ok">Active</span></div>
-            <div className="sms-bubble"><small>WhatsApp · just now</small>Your WhatsApp code is <b>482-913</b>. Don't share this code.</div>
-            <div className="sms-bubble"><small>Telegram · 2m ago</small>Telegram code: <b>70415</b></div>
-            <div className="phone-code">482913 <span>📋</span></div>
+          <div className="phone-wrap rise" style={{ '--d': 2 }} aria-hidden="true">
+          <div className="orb orb-a" /><div className="orb orb-b" />
+          <div className="phone-card float">
+            <div className="phone-top"><span>🇺🇸 +1 415 555 0182</span><span className="badge ok live-dot">Active</span></div>
+            <div className="typing"><span /><span /><span /></div>
+            <div className="sms-bubble arrive a1"><small>WhatsApp · just now</small>Your WhatsApp code is <b>482-913</b>. Don't share this code.</div>
+            <div className="sms-bubble arrive a2"><small>Telegram · 2m ago</small>Telegram code: <b>70415</b></div>
+            <div className="phone-code arrive a3">{'482913'.split('').map((d, i) => <i key={i} style={{ '--k': i }}>{d}</i>)} <span>📋</span></div>
+          </div>
           </div>
         </div>
       </section>
 
       <section className="container section">
-        <h2 className="section-title">How it works</h2>
+        <h2 className="section-title reveal">How it works</h2>
         <div className="grid-3">
           {[
             ['💳', '1. Top up your wallet', 'Recharge with USDT, Binance Pay, bKash or Nagad. Your balance never expires.'],
             ['📲', '2. Pick a service & country', 'Choose WhatsApp, Telegram, Google and more. Get your number instantly.'],
             ['✅', '3. Receive the code', 'The SMS appears in your dashboard within seconds. No SMS? Full refund.'],
-          ].map(([i, t, d]) => (
-            <div className="card feature" key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
+          ].map(([i, t, d], idx) => (
+            <div className="card feature reveal lift" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
         </div>
       </section>
 
       <section className="container section">
         <div className="row-between">
-          <h2 className="section-title">Popular services</h2>
+          <h2 className="section-title reveal">Popular services</h2>
           <Link to="/buy" className="link">See all →</Link>
         </div>
         <div className="service-grid">
-          {popular.map((s) => (
-            <Link to="/buy" key={s.id} className="service-tile">
+          {popular.map((s, idx) => (
+            <Link to="/buy" key={s.id} className="service-tile reveal" style={{ '--i': idx % 6 }}>
               <span className="service-icon">{s.icon}</span>
               <span className="service-name">{s.name}</span>
               <span className="muted small">from {money(Math.min(...db.countries.map((c) => priceFor(s, c))))}</span>
@@ -67,7 +72,7 @@ export default function Home() {
       </section>
 
       <section className="container section">
-        <h2 className="section-title">Why choose {db.settings.siteName}</h2>
+        <h2 className="section-title reveal">Why choose {db.settings.siteName}</h2>
         <div className="grid-3">
           {[
             ['🌍', 'Many countries', db.countries.map((c) => c.flag).join(' ')],
@@ -76,14 +81,14 @@ export default function Home() {
             ['🤝', 'Referral rewards', `Earn ${db.settings.referralPercent}% of every recharge your friends make.`],
             ['🔌', 'Developer API', 'Automate number purchases and SMS checks with a simple REST API.'],
             ['🔒', 'Private & secure', 'Your numbers and messages are only visible in your own dashboard.'],
-          ].map(([i, t, d]) => (
-            <div className="card feature" key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
+          ].map(([i, t, d], idx) => (
+            <div className="card feature reveal lift" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
         </div>
       </section>
 
       <section className="container section">
-        <div className="cta-band">
+        <div className="cta-band reveal">
           <div>
             <h2>Ready to get your first number?</h2>
             <p>Create a free account in 30 seconds.</p>

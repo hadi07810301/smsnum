@@ -30,7 +30,7 @@ function Header() {
           </button>
           {user ? (
             <>
-              <a href="#/dashboard/recharge" className="balance-pill" title="Recharge">💰 {money(user.balance)} <span>＋</span></a>
+              <a href="#/dashboard/recharge" key={user.balance} className="balance-pill bump" title="Recharge">💰 {money(user.balance)} <span>＋</span></a>
               <button className="btn ghost sm hide-sm" onClick={() => { logout(); navigate('/') }}>Logout</button>
             </>
           ) : (
@@ -103,7 +103,7 @@ export default function App() {
     <>
       {db.settings.announcement && <div className="announce">{db.settings.announcement}</div>}
       <Header />
-      <main>{page}</main>
+      <main key={path.startsWith('/dashboard') ? '/dashboard' : path} className="page-enter">{page}</main>
       <Footer />
       <BottomNav />
       <Toasts />
