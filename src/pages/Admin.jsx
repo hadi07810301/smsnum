@@ -3,7 +3,7 @@ import { usePath, navigate } from '../router.jsx'
 import {
   useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser,
   saveService, deleteService, saveCountry, deleteCountry, saveSettings, adminCancelOrder, replyTicket, closeTicket, toggleTheme, resetDB, priceFor,
-  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider,
+  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan,
 } from '../store.js'
 import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
 import { Badge, Stat, Empty, Modal, attempt, toast, Flag } from '../ui.jsx'
@@ -385,7 +385,7 @@ function Services({ db }) {
           <tbody>
             {db.services.map((s) => (
               <tr key={s.id}>
-                <td><b>{s.icon} {s.name}</b></td><td className="mono">{s.pcode || '—'}</td><td>{money(s.price)}</td><td>{money(priceFor(s, base))}</td><td>{s.stock}</td>
+                <td><b>{s.icon} {s.name}</b>{Object.keys(s.rentPrices || {}).length > 0 && <div><span className="badge info">custom extension prices</span></div>}</td><td className="mono">{s.pcode || '—'}</td><td>{money(s.price)}</td><td>{money(priceFor(s, base))}</td><td>{s.stock}</td>
                 <td><Badge s={s.enabled ? 'active' : 'closed'}>{s.enabled ? 'enabled' : 'disabled'}</Badge></td>
                 <td className="btn-row">
                   <button className="btn ghost sm" onClick={() => setEdit(s)}>Edit</button>
@@ -397,16 +397,64 @@ function Services({ db }) {
         </table>
       </div>
       {edit && (
-        <Modal title={edit.id ? 'Edit service' : 'New service'} onClose={() => setEdit(null)}>
-          <EditForm
-            value={edit}
-            fields={[['name', 'Name'], ['icon', 'Icon (emoji)'], ['pcode', 'Provider service code (e.g. wa, tg)'], ['price', 'Base price (USD)', 'number'], ['stock', 'Stock (demo mode)', 'number']]}
-            onSave={(v) => { if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveService(v) }, 'Service saved')) setEdit(null) }}
-            onDelete={edit.id && (() => { deleteService(edit.id); setEdit(null); toast('Service deleted') })}
-          />
+        <Modal title={edit.id ? 'Edit service' : 'New service'} onClose={() => setEdit(null)} wide>
+          <ServiceForm db={db} value={edit} onDone={() => setEdit(null)} />
         </Modal>
       )}
     </>
+  )
+}
+
+function ServiceForm({ db, value, onDone }) {
+  const [v, setV] = useState({ ...value, rentPrices: { ...(value.rentPrices || {}) } })
+  const set = (k) => (e) => setV({ ...v, [k]: e.target.value })
+  const base = db.countries.find((c) => c.enabled) || { mult: 1, name: '' }
+  const numberPrice = priceFor({ price: Number(v.price) || 0 }, base)
+  const plans = [shortPlan(db), ...(db.settings.rentPlans || []).filter((p) => p.enabled)]
+  return (
+    <form className="form" onSubmit={(e) => {
+      e.preventDefault()
+      if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveService(v) }, 'Service saved')) onDone()
+    }}>
+      <div className="grid-2">
+        <label>Name<input className="input" value={v.name} onChange={set('name')} /></label>
+        <label>Icon (emoji)<input className="input" value={v.icon} onChange={set('icon')} /></label>
+        <label>Provider service code (e.g. wa, tg)<input className="input mono" value={v.pcode || ''} onChange={set('pcode')} /></label>
+        <label>Base price (USD)<input className="input" type="number" step="0.01" value={v.price} onChange={set('price')} /></label>
+        <label>Stock (demo mode)<input className="input" type="number" value={v.stock} onChange={set('stock')} /></label>
+      </div>
+
+      <fieldset className="custom-box">
+        <legend>Extension prices for this service</legend>
+        <p className="muted small">Leave empty to use the default from Settings. Prices are the same for every country. Default shown for {base.name} ({money(numberPrice)} number).</p>
+        <div className="rent-grid">
+          {plans.map((p) => {
+            const def = planCost(p, numberPrice, null)
+            const val = v.rentPrices[p.id] ?? ''
+            return (
+              <label key={p.id} className="rent-cell">
+                <span>{p.label}</span>
+                <div className="money-input">
+                  <span>$</span>
+                  <input className="input" type="number" step="0.01" min="0" placeholder={def.toFixed(2)} value={val}
+                    onChange={(e) => setV({ ...v, rentPrices: { ...v.rentPrices, [p.id]: e.target.value } })} />
+                </div>
+                <small className="muted">{val === '' ? 'default' : 'custom'}</small>
+              </label>
+            )
+          })}
+        </div>
+        {Object.values(v.rentPrices).some((x) => x !== '') && (
+          <button type="button" className="btn ghost sm" onClick={() => setV({ ...v, rentPrices: {} })}>Reset to defaults</button>
+        )}
+      </fieldset>
+
+      <label className="check"><input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /> Enabled</label>
+      <div className="btn-row">
+        <button className="btn">Save</button>
+        {v.id && <button type="button" className="btn danger" onClick={() => { if (confirm('Delete permanently?')) { deleteService(v.id); onDone(); toast('Service deleted') } }}>Delete</button>}
+      </div>
+    </form>
   )
 }
 
@@ -543,6 +591,7 @@ function Settings({ db }) {
   const [f, setF] = useState({ siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
   const [pm, setPm] = useState(s.paymentMethods)
   const [plans, setPlans] = useState(s.rentPlans || [])
+  const [shortMult, setShortMult] = useState(s.extendMult ?? 0.5)
   const setPlan = (i, k, val) => setPlans(plans.map((p, j) => (j === i ? { ...p, [k]: val } : p)))
   const [cred, setCred] = useState({ adminUser: s.adminUser, adminPass: '' })
   const num = (k) => (e) => setF({ ...f, [k]: Number(e.target.value) })
@@ -563,26 +612,37 @@ function Settings({ db }) {
         <div>
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
-            const clean = plans.filter((p) => p.label.trim()).map((p) => ({ ...p, minutes: Math.max(1, Math.round(Number(p.days) ? Number(p.days) * 1440 : p.minutes)), mult: Number(p.mult) || 0, days: undefined }))
-            saveSettings({ rentPlans: clean }); setPlans(clean); toast('Extension plans saved')
+            const clean = plans.filter((p) => p.label.trim()).map((p) => ({ ...p, minutes: Math.max(1, Math.round(Number(p.days) ? Number(p.days) * 1440 : p.minutes)), mult: Number(p.mult) || 0, price: Number(p.price) || 0, days: undefined }))
+            saveSettings({ rentPlans: clean, extendMult: Number(shortMult) || 0 }); setPlans(clean); toast('Extension prices saved')
           }}>
             <h3>Number extension plans</h3>
-            <p className="muted small">Customers can keep a number longer. Price = number price × multiplier. Example: a $0.24 number with ×45 costs {money(0.24 * 45)} for its plan.</p>
-            <div className="plan-edit head"><span>Label</span><span>Days</span><span>× Price</span><span>On</span><span /></div>
+            <p className="muted small">Default prices for keeping a number longer. Choose <b>Fixed $</b> for one price for every number, or <b>× number</b> to multiply the number's price. You can still set a different price per service in <a className="link" href="#/admin/services">Services</a>.</p>
+            <div className="plan-edit short">
+              <span><b>{s.extendMinutes} minutes</b> <span className="muted small">(short)</span></span>
+              <div className="money-input"><span>×</span><input className="input" type="number" min="0" step="0.05" value={shortMult} onChange={(e) => setShortMult(e.target.value)} /></div>
+              <span className="muted small">e.g. {money(0.24 * (Number(shortMult) || 0))} for a $0.24 number</span>
+            </div>
+            <div className="plan-edit head"><span>Label</span><span>Days</span><span>Price type</span><span>Price</span><span>On</span><span /></div>
             {plans.map((p, i) => (
               <div className="plan-edit" key={p.id}>
                 <input className="input" value={p.label} onChange={(e) => setPlan(i, 'label', e.target.value)} />
                 <input className="input" type="number" min="1" step="1" value={p.days ?? Math.round(p.minutes / 1440)} onChange={(e) => setPlan(i, 'days', e.target.value)} />
-                <input className="input" type="number" min="0" step="0.1" value={p.mult} onChange={(e) => setPlan(i, 'mult', e.target.value)} />
+                <select className="input" value={p.priceType || 'mult'} onChange={(e) => setPlan(i, 'priceType', e.target.value)}>
+                  <option value="mult">× number</option>
+                  <option value="fixed">Fixed $</option>
+                </select>
+                {p.priceType === 'fixed'
+                  ? <div className="money-input"><span>$</span><input className="input" type="number" min="0" step="0.01" value={p.price} onChange={(e) => setPlan(i, 'price', e.target.value)} /></div>
+                  : <div className="money-input"><span>×</span><input className="input" type="number" min="0" step="0.1" value={p.mult} onChange={(e) => setPlan(i, 'mult', e.target.value)} /></div>}
                 <input type="checkbox" aria-label="Enabled" checked={p.enabled} onChange={(e) => setPlan(i, 'enabled', e.target.checked)} />
                 <button type="button" className="icon-btn" aria-label="Remove plan" onClick={() => setPlans(plans.filter((_, j) => j !== i))}>✕</button>
               </div>
             ))}
             <div className="btn-row">
-              <button type="button" className="btn ghost sm" onClick={() => setPlans([...plans, { id: 'p' + Date.now(), label: 'New plan', minutes: 1440, days: 1, mult: 3, enabled: true }])}>＋ Add plan</button>
+              <button type="button" className="btn ghost sm" onClick={() => setPlans([...plans, { id: 'p' + Date.now(), label: 'New plan', minutes: 1440, days: 1, priceType: 'fixed', price: 1, mult: 3, enabled: true }])}>＋ Add plan</button>
             </div>
-            <p className="muted small">The short {s.extendMinutes}-minute extension (50% of the price) is always offered too; change its length under General.</p>
-            <button className="btn full">Save extension plans</button>
+            <p className="muted small">Change the short extension's length under General → Extend time.</p>
+            <button className="btn full">Save extension prices</button>
           </form>
           <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings({ paymentMethods: pm }); toast('Payment methods saved') }}>
             <h3>Payment methods</h3>

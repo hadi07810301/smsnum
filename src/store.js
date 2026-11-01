@@ -48,6 +48,9 @@ function migrate(d) {
   d.services.forEach((x) => { if (x.pcode == null) x.pcode = SVC_CODES[x.name] || '' })
   d.countries.forEach((x) => { if (x.pcode == null) x.pcode = CTRY_CODES[x.id] || ''; if (x.iso == null) x.iso = CTRY_ISO[x.id] || '' })
   d.settings.rentPlans ||= DEFAULT_PLANS
+  d.settings.rentPlans.forEach((p) => { p.priceType ||= 'mult'; if (p.price == null) p.price = 1 })
+  if (d.settings.extendMult == null) d.settings.extendMult = 0.5
+  d.services.forEach((x) => { x.rentPrices ||= {} })
   return d
 }
 
@@ -245,11 +248,19 @@ export function cancelOrder(id) {
 }
 
 // Extension options: a short top-up plus the long-term rental plans set by the admin
+// Price of one extension plan for a service.
+// Order of priority: price set on the service → plan's fixed price → number price × multiplier
+export function planCost(plan, numberPrice, service) {
+  const custom = service?.rentPrices?.[plan.id]
+  if (custom !== undefined && custom !== '' && custom !== null && !Number.isNaN(Number(custom))) return Math.round(Number(custom) * 100) / 100
+  if (plan.priceType === 'fixed') return Math.round(Number(plan.price) * 100) / 100
+  return Math.round(numberPrice * Number(plan.mult) * 100) / 100
+}
+export const shortPlan = (d = db) => ({ id: 'short', label: `${d.settings.extendMinutes} minutes`, minutes: d.settings.extendMinutes, mult: d.settings.extendMult ?? 0.5, priceType: 'mult' })
 export function extendOptions(o, d = db) {
-  return [
-    { id: 'short', label: `${d.settings.extendMinutes} minutes`, minutes: d.settings.extendMinutes, mult: 0.5 },
-    ...(d.settings.rentPlans || []).filter((p) => p.enabled),
-  ].map((p) => ({ ...p, cost: Math.round(o.price * p.mult * 100) / 100 }))
+  const service = d.services.find((x) => x.id === o.serviceId)
+  return [shortPlan(d), ...(d.settings.rentPlans || []).filter((p) => p.enabled)]
+    .map((p) => ({ ...p, cost: planCost(p, o.price, service) }))
 }
 export const canExtend = (o) => ['waiting', 'received', 'completed'].includes(o.status)
 
@@ -427,7 +438,9 @@ export const deleteUser = (userId) => update((d) => { d.users = d.users.filter((
 
 export function saveService(s) {
   update((d) => {
-    const clean = { ...s, price: Number(s.price), stock: Number(s.stock) }
+    const rentPrices = {}
+    Object.entries(s.rentPrices || {}).forEach(([k, v]) => { if (v !== '' && v != null && !Number.isNaN(Number(v))) rentPrices[k] = Number(v) })
+    const clean = { ...s, price: Number(s.price), stock: Number(s.stock), rentPrices }
     const i = d.services.findIndex((x) => x.id === s.id)
     if (i >= 0) d.services[i] = clean
     else d.services.push({ ...clean, id: uid('s_') })
