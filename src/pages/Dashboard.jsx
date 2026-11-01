@@ -294,7 +294,7 @@ function Recharge({ db, user }) {
           {method && (
             <div className="pay-box">
               <div className="row-between">
-                <b>Send {money(f.amount)} {/usdt/i.test(method.name) ? 'USDT' : ''}</b>
+                <b>Send {money(f.amount)} {/usdt|binance/i.test(method.name) ? 'USDT' : ''}</b>
                 {method.network && <span className="badge info">{method.network}</span>}
               </div>
               {method.qr && method.details && (
@@ -308,10 +308,20 @@ function Recharge({ db, user }) {
               {/bep20/i.test(method.network + method.name) && (
                 <p className="pay-warn">⚠️ Send only <b>USDT</b> on <b>BNB Smart Chain (BEP20)</b>. Other coins or networks will be lost.</p>
               )}
+              {/trc20/i.test(method.network + method.name) && (
+                <p className="pay-warn">⚠️ Send only <b>USDT</b> on the <b>Tron (TRC20)</b> network. Other coins or networks will be lost.</p>
+              )}
+              {/binance pay/i.test(method.name) && (
+                <ol className="pay-steps">
+                  <li>Open the Binance app → <b>Pay</b> → <b>Send</b></li>
+                  <li>Choose <b>Pay ID</b> and enter <b className="mono">{method.details}</b></li>
+                  <li>Send <b>{money(f.amount)}</b> in USDT, then paste the <b>Order ID</b> below</li>
+                </ol>
+              )}
             </div>
           )}
           {!methods.length && <div className="alert warn">No payment method is available right now. Please contact support.</div>}
-          <label>Transaction ID (TxID / hash)
+          <label>{method && /binance pay/i.test(method.name) ? 'Binance Pay Order ID' : 'Transaction ID (TxID / hash)'}
             <input className="input mono" placeholder="Paste the transaction / reference ID" value={f.txid} onChange={(e) => setF({ ...f, txid: e.target.value })} />
           </label>
           <button className="btn full">Submit recharge</button>

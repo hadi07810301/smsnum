@@ -26,7 +26,7 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 - **Resend code**: get a new code on the same number for 50% of the buying price (percentage and per-service price editable by admin). If no new code arrives, only the resend price is refunded
 - **Extend / rent numbers**: +15 min, 1, 7, 30 or 90 days (from active cards or the orders table). Plans and prices are set in Admin → Settings → Number extension plans
 - Order management, SMS history, transactions
-- Recharge requests (USDT, Binance Pay, bKash, Nagad), balance transfer to other users
+- Recharge requests (USDT BEP20, USDT TRC20, Binance Pay), balance transfer to other users
 - Referral earnings, API key, support tickets, profile
 
 **Admin panel** (`/#/admin`, login `admin` / `admin`)

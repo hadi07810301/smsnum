@@ -14,6 +14,8 @@ const MIN = 60 * 1000
 const SVC_CODES = { WhatsApp: 'wa', Telegram: 'tg', 'Google / Gmail': 'go', Facebook: 'fb', Instagram: 'ig', TikTok: 'lf', 'X (Twitter)': 'tw', Discord: 'ds', Microsoft: 'mm', Amazon: 'am', Uber: 'ub', Snapchat: 'fu', LinkedIn: 'tn', Viber: 'vi', WeChat: 'wb', Signal: 'bw', Netflix: 'nf', Shopee: 'ka', Line: 'me', Yahoo: 'mb', 'Other / Any service': 'ot' }
 const CTRY_ISO = { 'us-nv': 'us', 'us-v': 'us', uk: 'gb', ca: 'ca', hk: 'hk', id: 'id', au: 'au' }
 const BEP20_METHOD = { id: 'bep20', name: 'USDT (BEP20)', network: 'BNB Smart Chain (BEP20)', details: '0xc6a794577ffcd2307c04107642ce17f465356b85', qr: true, enabled: true }
+const TRC20_METHOD = { id: 'usdt', name: 'USDT (TRC20)', network: 'Tron (TRC20)', details: 'TWnEb8Fdy4xqjfk8nqHXYSUo8XrqRvmheh', qr: true, enabled: true }
+const BINANCE_PAY_METHOD = { id: 'binance', name: 'Binance Pay', network: 'Binance Pay ID', details: '414012888', qr: false, enabled: true }
 const PLACEHOLDERS = ['TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'Pay ID: 000000000', '01XXXXXXXXX (Send Money)']
 export const DEFAULT_PLANS = [
   { id: 'd1', label: '1 day', minutes: 1440, mult: 3, enabled: true },
@@ -60,6 +62,14 @@ function migrate(d) {
     if (m.qr == null) m.qr = /usdt|trc|bep|erc/i.test(m.name)
     if (m.network == null) m.network = ''
   })
+  // one-time update: real TRC20 + Binance Pay details, remove bKash/Nagad
+  if ((d.settings.pmVersion || 0) < 2) {
+    const pm = d.settings.paymentMethods.filter((m) => !['bkash', 'nagad'].includes(m.id))
+    const put = (def) => { const i = pm.findIndex((m) => m.id === def.id); if (i >= 0) pm[i] = { ...pm[i], ...def }; else pm.push({ ...def }) }
+    put(TRC20_METHOD); put(BINANCE_PAY_METHOD)
+    d.settings.paymentMethods = pm
+    d.settings.pmVersion = 2
+  }
   d.services.forEach((x) => { x.rentPrices ||= {} })
   return d
 }
@@ -78,11 +88,10 @@ function seed() {
       adminPass: 'admin',
       paymentMethods: [
         BEP20_METHOD,
-        { id: 'usdt', name: 'USDT (TRC20)', network: 'Tron (TRC20)', details: '', qr: true, enabled: false },
-        { id: 'binance', name: 'Binance Pay', network: 'Binance Pay ID', details: '', qr: false, enabled: false },
-        { id: 'bkash', name: 'bKash', network: 'Send Money', details: '', qr: false, enabled: false },
-        { id: 'nagad', name: 'Nagad', network: 'Send Money', details: '', qr: false, enabled: false },
+        { ...TRC20_METHOD },
+        { ...BINANCE_PAY_METHOD },
       ],
+      pmVersion: 2,
     },
     countries: COUNTRIES,
     services: SERVICES,
