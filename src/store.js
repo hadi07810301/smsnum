@@ -1,12 +1,18 @@
 // Simple localStorage "database" so the whole site works without a backend.
 // Replace these functions with real API calls when you connect a server.
 import { useSyncExternalStore } from 'react'
+import * as P from './providers.js'
 
 const KEY = 'smsnum_db_v1'
 
 export const uid = (p = '') => p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4)
 const now = () => Date.now()
 const MIN = 60 * 1000
+
+// Default provider codes (SMS-Activate style). Edit them in Admin → Services / Countries
+// to match your provider's own code list.
+const SVC_CODES = { WhatsApp: 'wa', Telegram: 'tg', 'Google / Gmail': 'go', Facebook: 'fb', Instagram: 'ig', TikTok: 'lf', 'X (Twitter)': 'tw', Discord: 'ds', Microsoft: 'mm', Amazon: 'am', Uber: 'ub', Snapchat: 'fu', LinkedIn: 'tn', Viber: 'vi', WeChat: 'wb', Signal: 'bw', Netflix: 'nf', Shopee: 'ka', Line: 'me', Yahoo: 'mb', 'Other / Any service': 'ot' }
+const CTRY_CODES = { 'us-nv': '187', 'us-v': '12', uk: '16', ca: '36', hk: '14', id: '6', au: '175' }
 
 const COUNTRIES = [
   { id: 'us-nv', name: 'USA (Non-VOIP)', flag: '🇺🇸', code: '+1', mult: 1.6, enabled: true },
@@ -27,6 +33,15 @@ const SERVICES = [
   ['Signal', '🔵', 0.08], ['Netflix', '🎬', 0.07], ['Shopee', '🛍️', 0.05],
   ['Line', '💚', 0.06], ['Yahoo', '🟣', 0.05], ['Other / Any service', '🌐', 0.05],
 ].map(([name, icon, price], i) => ({ id: 's' + (i + 1), name, icon, price, enabled: true, stock: 50 + ((i * 37) % 400) }))
+
+function migrate(d) {
+  d.providers ||= []
+  d.settings.numberSource ||= 'demo'
+  d.settings.activeProvider ||= null
+  d.services.forEach((x) => { if (x.pcode == null) x.pcode = SVC_CODES[x.name] || '' })
+  d.countries.forEach((x) => { if (x.pcode == null) x.pcode = CTRY_CODES[x.id] || '' })
+  return d
+}
 
 function seed() {
   const demoId = 'u_demo'
@@ -70,9 +85,9 @@ function seed() {
 function load() {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) return migrate(JSON.parse(raw))
   } catch { /* ignore */ }
-  return seed()
+  return migrate(seed())
 }
 
 let db = load()
@@ -96,7 +111,7 @@ export function useDB() {
   return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l) }, () => db)
 }
 export function resetDB() {
-  db = seed(); save(); listeners.forEach((l) => l())
+  db = migrate(seed()); save(); listeners.forEach((l) => l())
 }
 
 // ---------- helpers ----------
@@ -178,7 +193,40 @@ export function buyNumber(serviceId, countryId) {
   })
 }
 
+export const activeProvider = (d = db) =>
+  d.settings.numberSource === 'api' ? d.providers.find((p) => p.id === d.settings.activeProvider && p.enabled) || null : null
+const providerOf = (o) => db.providers.find((p) => p.id === o.providerId)
+const quiet = (promise) => promise && promise.catch && promise.catch(() => {})
+
+// Buy a number: uses the live API provider when "Live API" mode is on, otherwise demo numbers
+export async function purchase(serviceId, countryId) {
+  if (db.settings.numberSource !== 'api') return buyNumber(serviceId, countryId)
+  const p = activeProvider()
+  if (!p) throw new Error('Live API mode is on but no active provider is set (Admin → API Providers)')
+  const u = currentUser(), s = db.services.find((x) => x.id === serviceId), c = db.countries.find((x) => x.id === countryId)
+  if (!u) throw new Error('Please log in first')
+  if (!s || !c || !s.enabled || !c.enabled) throw new Error('This service is not available right now')
+  const price = priceFor(s, c)
+  if (u.balance < price) throw new Error(`Insufficient balance. You need ${money(price)}.`)
+  const got = await P.getNumber(p, s.pcode, c.pcode) // throws on provider errors, balance untouched
+  return update((d) => {
+    const user = currentUser(d)
+    user.balance = Math.round((user.balance - price) * 100) / 100
+    const order = {
+      id: uid('o_'), userId: user.id, serviceId, countryId, service: s.name, icon: s.icon, country: c.name, flag: c.flag,
+      number: got.number, price, status: 'waiting', sms: [], createdAt: now(),
+      expiresAt: now() + d.settings.orderMinutes * MIN, smsAt: null,
+      live: true, providerId: p.id, providerName: p.name, providerOrderId: got.id,
+    }
+    d.orders.unshift(order)
+    addTx(d, user.id, 'debit', price, `Number for ${s.name} (${c.name})`)
+    return order
+  })
+}
+
 export function cancelOrder(id) {
+  const live = db.orders.find((x) => x.id === id)
+  if (live?.live && live.status === 'waiting' && providerOf(live)) quiet(P.cancelNumber(providerOf(live), live.providerOrderId))
   update((d) => {
     const o = d.orders.find((x) => x.id === id)
     if (!o || o.status !== 'waiting') throw new Error('Only numbers still waiting for SMS can be cancelled')
@@ -197,13 +245,43 @@ export function extendOrder(id) {
     if (u.balance < cost) throw new Error('Insufficient balance to extend')
     u.balance = Math.round((u.balance - cost) * 100) / 100
     o.expiresAt = Math.max(o.expiresAt, now()) + d.settings.extendMinutes * MIN
-    if (o.status === 'received') o.smsAt = now() + (10 + Math.random() * 20) * 1000
+    if (o.status === 'received' && !o.live) o.smsAt = now() + (10 + Math.random() * 20) * 1000
+    if (o.live) { const p = d.providers.find((x) => x.id === o.providerId); if (p) quiet(P.requestAnotherSms(p, o.providerOrderId)) }
     addTx(d, u.id, 'debit', cost, `Extend ${o.number} +${d.settings.extendMinutes} min`)
   })
 }
 
 export function finishOrder(id) {
+  const o = db.orders.find((x) => x.id === id)
+  if (o?.live && providerOf(o)) quiet(P.finishNumber(providerOf(o), o.providerOrderId))
   update((d) => { const o = d.orders.find((x) => x.id === id); if (o && o.status === 'received') o.status = 'completed' })
+}
+
+// Poll the provider for codes on live numbers
+const polling = new Set()
+async function pollLive() {
+  const list = db.orders.filter((o) => o.live && ['waiting', 'received'].includes(o.status) && !polling.has(o.id))
+  for (const o of list) {
+    const p = providerOf(o)
+    if (!p) continue
+    polling.add(o.id)
+    try {
+      const r = await P.getStatus(p, o.providerOrderId)
+      update((d) => {
+        const x = d.orders.find((y) => y.id === o.id)
+        if (!x || !['waiting', 'received'].includes(x.status)) return
+        for (const m of r.codes) {
+          if (!x.sms.some((s) => s.code === m.code)) { x.sms.push({ code: m.code, text: m.text, at: now() }); x.status = 'received' }
+        }
+        if (r.cancelled && x.status === 'waiting') {
+          x.status = 'cancelled'
+          const u = d.users.find((y) => y.id === x.userId)
+          if (u) { u.balance = Math.round((u.balance + x.price) * 100) / 100; addTx(d, u.id, 'refund', x.price, `Refund (cancelled by provider): ${x.service}`) }
+        }
+      })
+    } catch { /* try again next round */ }
+    polling.delete(o.id)
+  }
 }
 
 // Ticker: deliver simulated SMS and expire numbers
@@ -217,6 +295,7 @@ function tick() {
       if (o.expiresAt < t) {
         if (o.status === 'waiting') {
           o.status = 'expired'
+          if (o.live) { const p = d.providers.find((x) => x.id === o.providerId); if (p) quiet(P.cancelNumber(p, o.providerOrderId)) }
           const u = d.users.find((x) => x.id === o.userId)
           if (u) { u.balance = Math.round((u.balance + o.price) * 100) / 100; addTx(d, u.id, 'refund', o.price, `Auto refund (no SMS): ${o.service}`) }
         } else o.status = 'completed'
@@ -233,6 +312,7 @@ function tick() {
 }
 if (typeof window !== 'undefined') {
   setInterval(tick, 2000)
+  setInterval(pollLive, 5000)
   window.addEventListener('storage', (e) => { if (e.key === KEY) { db = load(); listeners.forEach((l) => l()) } })
 }
 
@@ -352,3 +432,35 @@ export function adminCancelOrder(id) {
   })
 }
 export const toggleTheme = () => update((d) => { d.theme = d.theme === 'dark' ? 'light' : 'dark' })
+
+// ---------- API providers (admin) ----------
+export function saveProvider(p) {
+  return update((d) => {
+    if (!p.name.trim()) throw new Error('Provider name is required')
+    if (!p.baseUrl.trim()) throw new Error('API URL is required')
+    const i = d.providers.findIndex((x) => x.id === p.id)
+    if (i >= 0) { d.providers[i] = { ...d.providers[i], ...p }; return d.providers[i] }
+    const np = { ...p, id: uid('p_'), createdAt: now() }
+    d.providers.push(np)
+    if (!d.settings.activeProvider) d.settings.activeProvider = np.id
+    return np
+  })
+}
+export const deleteProvider = (id) => update((d) => {
+  d.providers = d.providers.filter((x) => x.id !== id)
+  if (d.settings.activeProvider === id) d.settings.activeProvider = d.providers[0]?.id || null
+})
+export const setActiveProvider = (id) => update((d) => { d.settings.activeProvider = id })
+export const setNumberSource = (mode) => update((d) => { d.settings.numberSource = mode })
+export async function testProvider(id) {
+  const p = db.providers.find((x) => x.id === id)
+  try {
+    const balance = await P.getBalance(p)
+    if (Number.isNaN(balance)) throw new Error('Could not read balance from the response')
+    update((d) => { const x = d.providers.find((y) => y.id === id); x.lastBalance = balance; x.lastCheck = now(); x.lastError = '' })
+    return balance
+  } catch (e) {
+    update((d) => { const x = d.providers.find((y) => y.id === id); x.lastCheck = now(); x.lastError = e.message })
+    throw e
+  }
+}

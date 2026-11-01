@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { navigate } from '../router.jsx'
-import { useDB, currentUser, priceFor, money, buyNumber } from '../store.js'
-import { Modal, attempt, Empty } from '../ui.jsx'
+import { useDB, currentUser, priceFor, money, purchase } from '../store.js'
+import { Modal, Empty, toast } from '../ui.jsx'
 
 export default function Buy() {
   const db = useDB()
@@ -10,12 +10,23 @@ export default function Buy() {
   const [country, setCountry] = useState(countries[0]?.id)
   const [q, setQ] = useState('')
   const [pick, setPick] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const live = db.settings.numberSource === 'api'
   const c = countries.find((x) => x.id === country) || countries[0]
   const services = db.services.filter((s) => s.enabled && s.name.toLowerCase().includes(q.toLowerCase()))
 
-  function confirm() {
-    const o = attempt(() => buyNumber(pick.id, c.id), 'Number purchased! Waiting for SMS…')
-    if (o) { setPick(null); navigate('/dashboard/active') }
+  async function confirm() {
+    setBusy(true)
+    try {
+      await purchase(pick.id, c.id)
+      toast('Number purchased! Waiting for SMS…')
+      setPick(null)
+      navigate('/dashboard/active')
+    } catch (e) {
+      toast(e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -40,10 +51,10 @@ export default function Buy() {
               <span className="service-icon">{s.icon}</span>
               <div className="grow">
                 <b>{s.name}</b>
-                <div className="muted small">{c.flag} {c.name} · {s.stock > 0 ? `${s.stock} available` : 'Out of stock'}</div>
+                <div className="muted small">{c.flag} {c.name} · {live ? 'Instant delivery' : s.stock > 0 ? `${s.stock} available` : 'Out of stock'}</div>
               </div>
               <b className="price">{money(priceFor(s, c))}</b>
-              <button className="btn sm" disabled={s.stock <= 0} onClick={() => (user ? setPick(s) : navigate('/login'))}>Buy</button>
+              <button className="btn sm" disabled={!live && s.stock <= 0} onClick={() => (user ? setPick(s) : navigate('/login'))}>Buy</button>
             </div>
           ))}
         </div>
@@ -66,7 +77,9 @@ export default function Buy() {
           {user.balance < priceFor(pick, c) ? (
             <button className="btn full" onClick={() => navigate('/dashboard/recharge')}>Insufficient balance — Recharge</button>
           ) : (
-            <button className="btn full" onClick={confirm}>Buy for {money(priceFor(pick, c))}</button>
+            <button className="btn full" onClick={confirm} disabled={busy}>
+              {busy ? <><span className="spinner light" /> Getting your number…</> : <>Buy for {money(priceFor(pick, c))}</>}
+            </button>
           )}
         </Modal>
       )}

@@ -16,7 +16,7 @@ function Header() {
   return (
     <header className="topbar">
       <div className="container topbar-inner">
-        <Link to="/" className="logo">📱 <b>{db.settings.siteName}</b></Link>
+        <Link to="/" className="logo"><span className="logo-icon">📱</span> <b>{db.settings.siteName}</b></Link>
         <nav className="nav">
           <Link to="/">Home</Link>
           <Link to="/buy">Buy Numbers</Link>
@@ -101,11 +101,13 @@ export default function App() {
 
   return (
     <>
+      <div className="scroll-progress" aria-hidden="true" />
       {db.settings.announcement && <div className="announce">{db.settings.announcement}</div>}
       <Header />
       <main key={path.startsWith('/dashboard') ? '/dashboard' : path} className="page-enter">{page}</main>
       <Footer />
       <BottomNav />
+      <button className="to-top" aria-label="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑</button>
       <Toasts />
     </>
   )

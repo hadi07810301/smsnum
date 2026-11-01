@@ -1,6 +1,6 @@
 import { Link } from '../router.jsx'
 import { useDB, money, priceFor } from '../store.js'
-import { CountUp } from '../motion.jsx'
+import { CountUp, Rotator } from '../motion.jsx'
 
 export default function Home() {
   const db = useDB()
@@ -13,15 +13,15 @@ export default function Home() {
         <div className="container hero-inner">
           <div>
             <span className="eyebrow rise" style={{ '--d': 0 }}>⚡ Instant virtual numbers</span>
-            <h1 className="rise" style={{ '--d': 1 }}>Receive SMS verification codes <span className="grad">online, in seconds</span></h1>
+            <h1 className="rise" style={{ '--d': 1 }}>Receive SMS verification codes for <Rotator words={['WhatsApp', 'Telegram', 'Google', 'TikTok', 'Facebook', 'Instagram']} /> <span className="grad">in seconds</span></h1>
             <p className="lead rise" style={{ '--d': 2 }}>
               Get a temporary phone number for {db.services.length}+ services across {db.countries.length} countries.
               Numbers start from just <b>{money(isFinite(minPrice) ? minPrice : 0)}</b>. No subscription — pay only for what you use,
               and get an automatic refund if no SMS arrives.
             </p>
             <div className="hero-cta rise" style={{ '--d': 3 }}>
-              <Link to="/buy" className="btn lg shine">Get a number <span className="arrow">→</span></Link>
-              <Link to="/pricing" className="btn ghost lg">View pricing</Link>
+              <Link to="/buy" className="btn lg shine magnetic">Get a number <span className="arrow">→</span></Link>
+              <Link to="/pricing" className="btn ghost lg magnetic">View pricing</Link>
             </div>
             <div className="hero-stats rise" style={{ '--d': 4 }}>
               <div><b><CountUp value={99} suffix="%" /></b><span>Delivery rate</span></div>
@@ -42,6 +42,14 @@ export default function Home() {
         </div>
       </section>
 
+      <div className="marquee" aria-hidden="true">
+        <div className="marquee-track">
+          {[...db.services, ...db.services].map((s, i) => (
+            <span className="marquee-item" key={i}>{s.icon} {s.name}</span>
+          ))}
+        </div>
+      </div>
+
       <section className="container section">
         <h2 className="section-title reveal">How it works</h2>
         <div className="grid-3">
@@ -50,7 +58,7 @@ export default function Home() {
             ['📲', '2. Pick a service & country', 'Choose WhatsApp, Telegram, Google and more. Get your number instantly.'],
             ['✅', '3. Receive the code', 'The SMS appears in your dashboard within seconds. No SMS? Full refund.'],
           ].map(([i, t, d], idx) => (
-            <div className="card feature reveal lift" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
+            <div className="card feature reveal tilt" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
         </div>
       </section>
@@ -62,7 +70,7 @@ export default function Home() {
         </div>
         <div className="service-grid">
           {popular.map((s, idx) => (
-            <Link to="/buy" key={s.id} className="service-tile reveal" style={{ '--i': idx % 6 }}>
+            <Link to="/buy" key={s.id} className="service-tile reveal tilt" style={{ '--i': idx % 6 }}>
               <span className="service-icon">{s.icon}</span>
               <span className="service-name">{s.name}</span>
               <span className="muted small">from {money(Math.min(...db.countries.map((c) => priceFor(s, c))))}</span>
@@ -82,7 +90,7 @@ export default function Home() {
             ['🔌', 'Developer API', 'Automate number purchases and SMS checks with a simple REST API.'],
             ['🔒', 'Private & secure', 'Your numbers and messages are only visible in your own dashboard.'],
           ].map(([i, t, d], idx) => (
-            <div className="card feature reveal lift" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
+            <div className="card feature reveal tilt" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
         </div>
       </section>
@@ -93,7 +101,7 @@ export default function Home() {
             <h2>Ready to get your first number?</h2>
             <p>Create a free account in 30 seconds.</p>
           </div>
-          <Link to="/register" className="btn lg light">Create account</Link>
+          <Link to="/register" className="btn lg light magnetic">Create account</Link>
         </div>
       </section>
     </>

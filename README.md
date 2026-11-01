@@ -36,6 +36,24 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 - SMS center, support tickets (reply/close), all transactions
 - Settings: site name, announcement bar, minimum recharge, referral %, number timers, payment method details, admin login, reset data
 
+## API providers (real numbers)
+
+Admin → **API Providers** lets you connect a real SMS number provider:
+
+1. **Add API** → pick the type and paste your provider's API link and API key.
+   - **SMS-Activate compatible**: the `handler_api.php?api_key=…&action=getNumber` format used by many providers
+   - **5SIM**: 5sim.net
+   - **Custom JSON API**: any other provider, configured with URL templates and JSON paths
+2. **Test & balance** checks the connection and shows your provider balance.
+3. Set each service's and country's **API code** (Admin → Services / Countries) to match your provider's code list.
+4. Switch **Number source** to **Live API**.
+
+When a customer buys, the site requests a number from the provider, polls every 5 seconds for the code, and cancels/finishes the order at the provider when the customer cancels, finishes, or the number expires without an SMS.
+
+If the test shows "network or CORS blocked", deploy `proxy/worker.js` on Cloudflare Workers (free) and paste its URL into the provider's **Proxy URL**.
+
+> ⚠️ Until a backend is added, provider settings (including the API key) are saved only in the browser where you entered them, so live numbers only work in that browser. A backend should store the key and make provider calls for all customers.
+
 ## Important: this is a frontend demo
 
 All data is stored in the browser (`localStorage`), and incoming SMS codes are **simulated** (a fake code arrives 8–25 seconds after buying). This makes the site fully clickable on GitHub Pages without a server.

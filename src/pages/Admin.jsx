@@ -3,13 +3,15 @@ import { usePath, navigate } from '../router.jsx'
 import {
   useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser,
   saveService, deleteService, saveCountry, deleteCountry, saveSettings, adminCancelOrder, replyTicket, closeTicket, toggleTheme, resetDB, priceFor,
+  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider,
 } from '../store.js'
+import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
 import { Badge, Stat, Empty, Modal, attempt, toast } from '../ui.jsx'
 import { Thread } from './Dashboard.jsx'
 
 const TABS = [
   ['', '📊', 'Overview'], ['users', '👥', 'Users'], ['orders', '🧾', 'Orders'], ['recharges', '💳', 'Recharges'],
-  ['services', '📲', 'Services'], ['countries', '🌍', 'Countries'], ['sms', '💬', 'SMS Center'],
+  ['providers', '🔌', 'API Providers'], ['services', '📲', 'Services'], ['countries', '🌍', 'Countries'], ['sms', '💬', 'SMS Center'],
   ['tickets', '🎧', 'Tickets'], ['transactions', '📜', 'Transactions'], ['settings', '⚙️', 'Settings'],
 ]
 
@@ -37,7 +39,7 @@ export default function Admin() {
 
   const pendingR = db.recharges.filter((r) => r.status === 'pending').length
   const openT = db.tickets.filter((t) => t.status === 'open').length
-  const Page = { '': Overview, users: Users, orders: Orders, recharges: Recharges, services: Services, countries: Countries, sms: SmsCenter, tickets: Tickets, transactions: Transactions, settings: Settings }[tab] || Overview
+  const Page = { '': Overview, users: Users, orders: Orders, recharges: Recharges, providers: Providers, services: Services, countries: Countries, sms: SmsCenter, tickets: Tickets, transactions: Transactions, settings: Settings }[tab] || Overview
 
   return (
     <div className="admin">
@@ -191,7 +193,7 @@ function Orders({ db }) {
                 <tr key={o.id}>
                   <td className="small">{email(o.userId)}</td>
                   <td>{o.icon} {o.service}<div className="muted small">{o.flag} {o.country}</div></td>
-                  <td className="mono">{o.number}</td>
+                  <td className="mono">{o.number}<div className="muted small">{o.live ? `🔌 ${o.providerName} #${o.providerOrderId}` : 'demo'}</div></td>
                   <td>{money(o.price)}</td>
                   <td className="mono">{o.sms[o.sms.length - 1]?.code || '—'}</td>
                   <td><Badge s={o.status} /></td>
@@ -242,20 +244,148 @@ function Recharges({ db }) {
   )
 }
 
+function Providers({ db }) {
+  const [edit, setEdit] = useState(null)
+  const [testing, setTesting] = useState(null)
+  const live = db.settings.numberSource === 'api'
+  async function test(id) {
+    setTesting(id)
+    try { const b = await testProvider(id); toast('Connected ✓ Provider balance: ' + b) } catch (e) { toast(e.message, 'error') }
+    setTesting(null)
+  }
+  return (
+    <>
+      <div className="row-between">
+        <h1>API providers</h1>
+        <button className="btn sm" onClick={() => setEdit(emptyProvider())}>＋ Add API</button>
+      </div>
+
+      <div className="card source-card">
+        <div>
+          <h3>Number source</h3>
+          <p className="muted small">Choose where customer numbers come from.</p>
+        </div>
+        <div className="segmented" role="radiogroup">
+          <button role="radio" aria-checked={!live} className={!live ? 'on' : ''} onClick={() => setNumberSource('demo')}>🧪 Demo numbers</button>
+          <button role="radio" aria-checked={live} className={live ? 'on' : ''} onClick={() => {
+            if (!db.providers.length) return toast('Add an API provider first', 'error')
+            setNumberSource('api'); toast('Live API mode on — numbers now come from your provider')
+          }}>🔌 Live API</button>
+          <span className="seg-thumb" style={{ transform: live ? 'translateX(100%)' : 'none' }} />
+        </div>
+      </div>
+
+      {!db.providers.length ? <Empty icon="🔌" text="No API added yet. Click “Add API” and paste your provider's API link and key." /> : (
+        <div className="provider-grid">
+          {db.providers.map((p) => {
+            const active = db.settings.activeProvider === p.id
+            return (
+              <div key={p.id} className={'card provider-card tilt' + (active ? ' is-active' : '')}>
+                <div className="row-between">
+                  <div><b>{p.name}</b><div className="muted small">{PROVIDER_TYPES[p.type]?.label}</div></div>
+                  {active ? <Badge s="active">{live ? '● Live' : 'Active'}</Badge> : <Badge s="closed">{p.enabled ? 'standby' : 'disabled'}</Badge>}
+                </div>
+                <ul className="info-list">
+                  <li><span>API URL</span><b className="mono trunc">{p.baseUrl}</b></li>
+                  <li><span>API key</span><b className="mono">{p.apiKey ? p.apiKey.slice(0, 4) + '••••••' + p.apiKey.slice(-3) : '—'}</b></li>
+                  <li><span>Balance</span><b>{p.lastBalance != null ? p.lastBalance : '—'}</b></li>
+                  <li><span>Last check</span><b className="small">{p.lastCheck ? fmtDate(p.lastCheck) : 'never'}</b></li>
+                </ul>
+                {p.lastError && <div className="alert bad small">⚠️ {p.lastError}</div>}
+                <div className="btn-row">
+                  <button className="btn sm" disabled={testing === p.id} onClick={() => test(p.id)}>
+                    {testing === p.id ? <><span className="spinner light" /> Testing…</> : '⚡ Test & balance'}
+                  </button>
+                  {!active && <button className="btn ghost sm" onClick={() => { setActiveProvider(p.id); toast(p.name + ' is now the active provider') }}>Use this</button>}
+                  <button className="btn ghost sm" onClick={() => setEdit(p)}>Edit</button>
+                  <button className="btn danger sm" onClick={() => confirm('Delete this provider?') && deleteProvider(p.id)}>Delete</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="card how-card">
+        <h3>How it works</h3>
+        <ol className="steps">
+          <li>Click <b>Add API</b>, choose your provider type and paste the <b>API link</b> and <b>API key</b> from your provider's website.</li>
+          <li>Press <b>Test & balance</b>. If it shows your provider balance, the connection works.</li>
+          <li>Check the <b>API codes</b> in <a className="link" href="#/admin/services">Services</a> and <a className="link" href="#/admin/countries">Countries</a> match your provider's code list.</li>
+          <li>Switch <b>Number source</b> to <b>Live API</b>. Customers now get real numbers, and codes appear automatically.</li>
+        </ol>
+        <p className="muted small">If the test says “network or CORS blocked”, your provider doesn't allow calls straight from a browser. Deploy the small proxy in <span className="mono">proxy/worker.js</span> (free on Cloudflare) and paste its link in the provider's <b>Proxy URL</b>.</p>
+      </div>
+
+      {edit && <ProviderForm value={edit} onClose={() => setEdit(null)} />}
+    </>
+  )
+}
+
+function ProviderForm({ value, onClose }) {
+  const [v, setV] = useState({ ...emptyProvider(), ...value, custom: { ...emptyProvider().custom, ...(value.custom || {}) } })
+  const set = (k) => (e) => setV({ ...v, [k]: e.target.value })
+  const setC = (k) => (e) => setV({ ...v, custom: { ...v.custom, [k]: e.target.value } })
+  return (
+    <Modal title={v.id ? 'Edit API provider' : 'Add API provider'} onClose={onClose} wide>
+      <form className="form" onSubmit={(e) => { e.preventDefault(); if (attempt(() => saveProvider(v), 'Provider saved')) onClose() }}>
+        <label>Provider name<input className="input" placeholder="e.g. HeroSMS" value={v.name} onChange={set('name')} /></label>
+        <label>API type
+          <select className="input" value={v.type} onChange={(e) => {
+            const t = e.target.value
+            const isDefault = Object.values(PROVIDER_TYPES).some((x) => x.base === v.baseUrl) || !v.baseUrl
+            setV({ ...v, type: t, baseUrl: isDefault ? PROVIDER_TYPES[t].base : v.baseUrl })
+          }}>
+            {Object.entries(PROVIDER_TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+          </select>
+        </label>
+        <label>API link (URL)<input className="input mono" value={v.baseUrl} onChange={set('baseUrl')} /></label>
+        <label>API key<input className="input mono" type="password" autoComplete="off" value={v.apiKey} onChange={set('apiKey')} /></label>
+        <label>Proxy URL (optional)<input className="input mono" placeholder="https://your-proxy.workers.dev" value={v.proxy} onChange={set('proxy')} /></label>
+        {v.type === 'custom' && (
+          <fieldset className="custom-box">
+            <legend>Custom API settings</legend>
+            <p className="muted small">Use placeholders <span className="mono">{'{base} {key} {service} {country} {id}'}</span>. Paths read values from the JSON reply, e.g. <span className="mono">data.phone</span>.</p>
+            <label>Authorization header (optional)<input className="input mono" placeholder="Bearer xxx" value={v.custom.authHeader} onChange={setC('authHeader')} /></label>
+            <label>Get number URL<input className="input mono" value={v.custom.getNumberUrl} onChange={setC('getNumberUrl')} /></label>
+            <div className="grid-2">
+              <label>Order ID path<input className="input mono" value={v.custom.idPath} onChange={setC('idPath')} /></label>
+              <label>Phone number path<input className="input mono" value={v.custom.numberPath} onChange={setC('numberPath')} /></label>
+            </div>
+            <label>Check SMS URL<input className="input mono" value={v.custom.statusUrl} onChange={setC('statusUrl')} /></label>
+            <div className="grid-2">
+              <label>Code path<input className="input mono" value={v.custom.codePath} onChange={setC('codePath')} /></label>
+              <label>SMS text path<input className="input mono" value={v.custom.smsTextPath} onChange={setC('smsTextPath')} /></label>
+            </div>
+            <label>Cancel URL<input className="input mono" value={v.custom.cancelUrl} onChange={setC('cancelUrl')} /></label>
+            <label>Finish URL<input className="input mono" value={v.custom.finishUrl} onChange={setC('finishUrl')} /></label>
+            <div className="grid-2">
+              <label>Balance URL<input className="input mono" value={v.custom.balanceUrl} onChange={setC('balanceUrl')} /></label>
+              <label>Balance path<input className="input mono" value={v.custom.balancePath} onChange={setC('balancePath')} /></label>
+            </div>
+          </fieldset>
+        )}
+        <label className="check"><input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /> Enabled</label>
+        <button className="btn full">Save provider</button>
+      </form>
+    </Modal>
+  )
+}
+
 function Services({ db }) {
   const [edit, setEdit] = useState(null)
   const base = db.countries.find((c) => c.enabled) || { mult: 1 }
   return (
     <>
-      <div className="row-between"><h1>Services & prices</h1><button className="btn sm" onClick={() => setEdit({ name: '', icon: '🌐', price: 0.1, stock: 100, enabled: true })}>＋ Add service</button></div>
+      <div className="row-between"><h1>Services & prices</h1><button className="btn sm" onClick={() => setEdit({ name: '', icon: '🌐', pcode: '', price: 0.1, stock: 100, enabled: true })}>＋ Add service</button></div>
       <p className="muted small">Base price is multiplied by each country's multiplier (see Countries).</p>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>Service</th><th>Base price</th><th>Example ({base.name})</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Service</th><th>API code</th><th>Base price</th><th>Example ({base.name})</th><th>Stock</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {db.services.map((s) => (
               <tr key={s.id}>
-                <td><b>{s.icon} {s.name}</b></td><td>{money(s.price)}</td><td>{money(priceFor(s, base))}</td><td>{s.stock}</td>
+                <td><b>{s.icon} {s.name}</b></td><td className="mono">{s.pcode || '—'}</td><td>{money(s.price)}</td><td>{money(priceFor(s, base))}</td><td>{s.stock}</td>
                 <td><Badge s={s.enabled ? 'active' : 'closed'}>{s.enabled ? 'enabled' : 'disabled'}</Badge></td>
                 <td className="btn-row">
                   <button className="btn ghost sm" onClick={() => setEdit(s)}>Edit</button>
@@ -270,7 +400,7 @@ function Services({ db }) {
         <Modal title={edit.id ? 'Edit service' : 'New service'} onClose={() => setEdit(null)}>
           <EditForm
             value={edit}
-            fields={[['name', 'Name'], ['icon', 'Icon (emoji)'], ['price', 'Base price (USD)', 'number'], ['stock', 'Stock', 'number']]}
+            fields={[['name', 'Name'], ['icon', 'Icon (emoji)'], ['pcode', 'Provider service code (e.g. wa, tg)'], ['price', 'Base price (USD)', 'number'], ['stock', 'Stock (demo mode)', 'number']]}
             onSave={(v) => { if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveService(v) }, 'Service saved')) setEdit(null) }}
             onDelete={edit.id && (() => { deleteService(edit.id); setEdit(null); toast('Service deleted') })}
           />
@@ -284,14 +414,14 @@ function Countries({ db }) {
   const [edit, setEdit] = useState(null)
   return (
     <>
-      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', code: '+', mult: 1, enabled: true })}>＋ Add country</button></div>
+      <div className="row-between"><h1>Countries</h1><button className="btn sm" onClick={() => setEdit({ name: '', flag: '🏳️', code: '+', pcode: '', mult: 1, enabled: true })}>＋ Add country</button></div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>Country</th><th>Dial code</th><th>Price multiplier</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Country</th><th>API code</th><th>Dial code</th><th>Price multiplier</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {db.countries.map((c) => (
               <tr key={c.id}>
-                <td><b>{c.flag} {c.name}</b></td><td className="mono">{c.code}</td><td>×{c.mult}</td>
+                <td><b>{c.flag} {c.name}</b></td><td className="mono">{c.pcode || '—'}</td><td className="mono">{c.code}</td><td>×{c.mult}</td>
                 <td><Badge s={c.enabled ? 'active' : 'closed'}>{c.enabled ? 'enabled' : 'disabled'}</Badge></td>
                 <td className="btn-row">
                   <button className="btn ghost sm" onClick={() => setEdit(c)}>Edit</button>
@@ -306,7 +436,7 @@ function Countries({ db }) {
         <Modal title={edit.id ? 'Edit country' : 'New country'} onClose={() => setEdit(null)}>
           <EditForm
             value={edit}
-            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['code', 'Dial code'], ['mult', 'Price multiplier', 'number']]}
+            fields={[['name', 'Name'], ['flag', 'Flag (emoji)'], ['code', 'Dial code'], ['pcode', 'Provider country code (e.g. 187)'], ['mult', 'Price multiplier', 'number']]}
             onSave={(v) => { if (attempt(() => { if (!v.name.trim()) throw new Error('Name is required'); saveCountry(v) }, 'Country saved')) setEdit(null) }}
             onDelete={edit.id && (() => { deleteCountry(edit.id); setEdit(null); toast('Country deleted') })}
           />

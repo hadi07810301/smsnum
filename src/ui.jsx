@@ -75,7 +75,7 @@ export function Empty({ icon = '📭', text }) {
 
 export function Stat({ icon, label, value, tone }) {
   return (
-    <div className={'stat ' + (tone || '')}>
+    <div className={'stat tilt ' + (tone || '')}>
       <div className="stat-icon">{icon}</div>
       <div><div className="stat-label">{label}</div><div className="stat-value">{value}</div></div>
     </div>

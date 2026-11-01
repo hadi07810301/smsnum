@@ -86,7 +86,7 @@ function OrderCards({ orders, db }) {
   return (
     <div className="order-cards">
       {orders.map((o) => (
-        <div className={'card order-card' + (o.status === 'received' ? ' got-sms' : '')} key={o.id}>
+        <div className={'card order-card tilt soft' + (o.status === 'received' ? ' got-sms' : '')} key={o.id}>
           <div className="row-between">
             <div><span className="service-icon">{o.icon}</span> <b>{o.service}</b> <span className="muted small">{o.flag} {o.country}</span></div>
             <Badge s={o.status}>{o.status === 'waiting' ? '⏳ Waiting for SMS' : '✅ SMS received'}</Badge>
