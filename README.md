@@ -23,6 +23,7 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 **User dashboard**
 - Overview: balance, orders, active numbers, referrals, low-balance warning
 - Active numbers with live countdown, copy number / code, cancel with refund
+- **Resend code**: get a new code on the same number for 50% of the buying price (percentage and per-service price editable by admin). If no new code arrives, only the resend price is refunded
 - **Extend / rent numbers**: +15 min, 1, 7, 30 or 90 days (from active cards or the orders table). Plans and prices are set in Admin → Settings → Number extension plans
 - Order management, SMS history, transactions
 - Recharge requests (USDT, Binance Pay, bKash, Nagad), balance transfer to other users

@@ -561,3 +561,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .rent-cell { gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; transition: border-color .2s; }
 .rent-cell:focus-within { border-color: var(--primary); }
 @media (max-width: 560px) { .plan-edit { grid-template-columns: 1fr 1fr; } .plan-edit.head { display: none; } .plan-edit.short { grid-template-columns: 1fr; } }
+
+/* resend */
+.btn.resend { background: var(--info-bg); color: var(--info); }
+.btn.resend:hover { box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--info) 45%, transparent); }
+.spin-icon { display: inline-block; transition: transform .5s var(--ease); }
+.btn.resend:hover .spin-icon { transform: rotate(-180deg); }
+.nowrap { flex-wrap: nowrap; }
+.table td.mono { white-space: nowrap; }

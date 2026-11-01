@@ -50,6 +50,7 @@ function migrate(d) {
   d.settings.rentPlans ||= DEFAULT_PLANS
   d.settings.rentPlans.forEach((p) => { p.priceType ||= 'mult'; if (p.price == null) p.price = 1 })
   if (d.settings.extendMult == null) d.settings.extendMult = 0.5
+  if (d.settings.resendMult == null) d.settings.resendMult = 0.5
   d.services.forEach((x) => { x.rentPrices ||= {} })
   return d
 }
@@ -142,6 +143,18 @@ function addTx(d, userId, type, amount, note) {
   d.transactions.unshift({ id: uid('t_'), userId, type, amount, note, at: now() })
 }
 
+// A waiting number got no SMS: refund what was paid for this wait.
+// After a resend only the resend price is refunded and the number goes back to "completed"
+// (the first code was already delivered).
+function refundWaiting(d, o, status, note) {
+  const resent = o.pendingCharge != null
+  const amount = resent ? o.pendingCharge : o.price
+  o.status = resent ? 'completed' : status
+  o.pendingCharge = null
+  const u = d.users.find((x) => x.id === o.userId)
+  if (u && amount > 0) { u.balance = Math.round((u.balance + amount) * 100) / 100; addTx(d, u.id, 'refund', amount, `${note}${resent ? ' (resend)' : ''}: ${o.service}`) }
+}
+
 // ---------- auth ----------
 export function register({ name, email, password, ref }) {
   return update((d) => {
@@ -227,7 +240,7 @@ export async function purchase(serviceId, countryId) {
       id: uid('o_'), userId: user.id, serviceId, countryId, service: s.name, icon: s.icon, country: c.name, flag: c.flag,
       number: got.number, price, status: 'waiting', sms: [], createdAt: now(),
       expiresAt: now() + d.settings.orderMinutes * MIN, smsAt: null,
-      live: true, providerId: p.id, providerName: p.name, providerOrderId: got.id,
+      live: true, providerId: p.id, providerName: p.name, providerOrderId: got.id, providerService: s.pcode,
     }
     d.orders.unshift(order)
     addTx(d, user.id, 'debit', price, `Number for ${s.name} (${c.name})`)
@@ -241,9 +254,45 @@ export function cancelOrder(id) {
   update((d) => {
     const o = d.orders.find((x) => x.id === id)
     if (!o || o.status !== 'waiting') throw new Error('Only numbers still waiting for SMS can be cancelled')
-    o.status = 'cancelled'
-    const u = d.users.find((x) => x.id === o.userId)
-    if (u) { u.balance = Math.round((u.balance + o.price) * 100) / 100; addTx(d, u.id, 'refund', o.price, `Refund: ${o.service}`) }
+    refundWaiting(d, o, 'cancelled', 'Refund')
+  })
+}
+
+// ---------- resend (new code on the same number) ----------
+export function resendCost(o, d = db) {
+  const service = d.services.find((x) => x.id === o.serviceId)
+  const custom = service?.resendPrice
+  if (custom !== undefined && custom !== '' && custom !== null && !Number.isNaN(Number(custom))) return Math.round(Number(custom) * 100) / 100
+  return Math.round(o.price * (d.settings.resendMult ?? 0.5) * 100) / 100
+}
+export const canResend = (o) => ['received', 'completed'].includes(o.status) && o.sms.length > 0 && !(o.rented && o.status === 'received')
+
+export async function resendCode(id) {
+  const o = db.orders.find((x) => x.id === id)
+  const u = currentUser()
+  if (!o || !u || !canResend(o)) throw new Error('A new code can only be requested after the first SMS has arrived')
+  const cost = resendCost(o)
+  if (u.balance < cost) throw new Error(`Insufficient balance. Resend costs ${money(cost)}.`)
+  let newProviderId = null
+  if (o.live) {
+    const p = providerOf(o)
+    if (!p) throw new Error('The provider for this number was removed')
+    if (p.type === 'smsactivate') await P.requestAnotherSms(p, o.providerOrderId)
+    else if (p.type === '5sim') newProviderId = await P.reuseNumber(p, o)
+    else throw new Error('Your custom provider does not support resending yet')
+  }
+  return update((d) => {
+    const x = d.orders.find((y) => y.id === id)
+    const user = currentUser(d)
+    user.balance = Math.round((user.balance - cost) * 100) / 100
+    x.status = 'waiting'
+    x.pendingCharge = cost
+    x.resends = (x.resends || 0) + 1
+    x.expiresAt = Math.max(x.expiresAt, now()) + d.settings.orderMinutes * MIN
+    if (newProviderId) x.providerOrderId = newProviderId
+    if (!x.live) x.smsAt = now() + (8 + Math.random() * 17) * 1000
+    addTx(d, user.id, 'debit', cost, `Resend code to ${x.number} (${x.service})`)
+    return cost
   })
 }
 
@@ -305,13 +354,9 @@ async function pollLive() {
         const x = d.orders.find((y) => y.id === o.id)
         if (!x || !['waiting', 'received'].includes(x.status)) return
         for (const m of r.codes) {
-          if (!x.sms.some((s) => s.code === m.code)) { x.sms.push({ code: m.code, text: m.text, at: now() }); x.status = 'received' }
+          if (!x.sms.some((s) => s.code === m.code)) { x.sms.push({ code: m.code, text: m.text, at: now() }); x.status = 'received'; x.pendingCharge = null }
         }
-        if (r.cancelled && x.status === 'waiting') {
-          x.status = 'cancelled'
-          const u = d.users.find((y) => y.id === x.userId)
-          if (u) { u.balance = Math.round((u.balance + x.price) * 100) / 100; addTx(d, u.id, 'refund', x.price, `Refund (cancelled by provider): ${x.service}`) }
-        }
+        if (r.cancelled && x.status === 'waiting') refundWaiting(d, x, 'cancelled', 'Refund (cancelled by provider)')
       })
     } catch { /* try again next round */ }
     polling.delete(o.id)
@@ -328,10 +373,8 @@ function tick() {
       if (!['waiting', 'received'].includes(o.status)) continue
       if (o.expiresAt < t) {
         if (o.status === 'waiting') {
-          o.status = 'expired'
           if (o.live) { const p = d.providers.find((x) => x.id === o.providerId); if (p) quiet(P.cancelNumber(p, o.providerOrderId)) }
-          const u = d.users.find((x) => x.id === o.userId)
-          if (u) { u.balance = Math.round((u.balance + o.price) * 100) / 100; addTx(d, u.id, 'refund', o.price, `Auto refund (no SMS): ${o.service}`) }
+          refundWaiting(d, o, 'expired', 'Auto refund (no SMS)')
         } else o.status = 'completed'
         continue
       }
@@ -340,6 +383,7 @@ function tick() {
         o.sms.push({ code, text: `Your ${o.service} verification code is ${code}. Do not share this code.`, at: t })
         o.status = 'received'
         o.smsAt = null
+        o.pendingCharge = null
       }
     }
   })
@@ -440,7 +484,8 @@ export function saveService(s) {
   update((d) => {
     const rentPrices = {}
     Object.entries(s.rentPrices || {}).forEach(([k, v]) => { if (v !== '' && v != null && !Number.isNaN(Number(v))) rentPrices[k] = Number(v) })
-    const clean = { ...s, price: Number(s.price), stock: Number(s.stock), rentPrices }
+    const resendPrice = s.resendPrice === '' || s.resendPrice == null || Number.isNaN(Number(s.resendPrice)) ? null : Number(s.resendPrice)
+    const clean = { ...s, price: Number(s.price), stock: Number(s.stock), rentPrices, resendPrice }
     const i = d.services.findIndex((x) => x.id === s.id)
     if (i >= 0) d.services[i] = clean
     else d.services.push({ ...clean, id: uid('s_') })
@@ -461,10 +506,8 @@ export function adminCancelOrder(id) {
   update((d) => {
     const o = d.orders.find((x) => x.id === id)
     if (!o || !['waiting', 'received'].includes(o.status)) return
-    const refund = o.status === 'waiting'
-    o.status = 'cancelled'
-    const u = d.users.find((x) => x.id === o.userId)
-    if (refund && u) { u.balance = Math.round((u.balance + o.price) * 100) / 100; addTx(d, u.id, 'refund', o.price, `Refund by admin: ${o.service}`) }
+    if (o.status === 'waiting') refundWaiting(d, o, 'cancelled', 'Refund by admin')
+    else o.status = 'cancelled'
   })
 }
 export const toggleTheme = () => update((d) => { d.theme = d.theme === 'dark' ? 'light' : 'dark' })

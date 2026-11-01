@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, usePath, navigate } from '../router.jsx'
 import {
-  useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, extendOptions, canExtend, finishOrder, requestRecharge,
+  useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, extendOptions, canExtend, finishOrder, resendCode, resendCost, canResend, requestRecharge,
   transferBalance, regenerateApiKey, updateProfile, createTicket, replyTicket, closeTicket, logout,
 } from '../store.js'
 import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_ } from '../ui.jsx'
@@ -89,7 +89,7 @@ function OrderCards({ orders, db }) {
         <div className={'card order-card tilt soft' + (o.status === 'received' ? ' got-sms' : '')} key={o.id}>
           <div className="row-between">
             <div><span className="service-icon">{o.icon}</span> <b>{o.service}</b> <span className="muted small"><Flag id={o.countryId} /> {o.country}</span></div>
-            <Badge s={o.rented ? 'info' : o.status}>{o.rented ? '📅 Rented' : o.status === 'waiting' ? '⏳ Waiting for SMS' : '✅ SMS received'}</Badge>
+            <Badge s={o.rented ? 'info' : o.status}>{o.rented ? '📅 Rented' : o.status === 'waiting' ? (o.sms.length ? '🔁 Waiting for new code' : '⏳ Waiting for SMS') : '✅ SMS received'}</Badge>
           </div>
           <div className="number-line">
             <span className="mono big">{o.number}</span>
@@ -100,11 +100,13 @@ function OrderCards({ orders, db }) {
               <small>{fmtDate(m.at)}</small>{m.text}
               <div className="code-row"><span className="mono code">{m.code}</span><button className="btn sm" onClick={() => copy(m.code)}>Copy code</button></div>
             </div>
-          )) : <div className="waiting"><span className="spinner" /> Waiting for SMS… use this number on {o.service} now.</div>}
+          )) : null}
+          {o.status === 'waiting' && <div className="waiting"><span className="spinner" /> {o.sms.length ? 'Waiting for a new code… request it again on ' + o.service + ' now.' : `Waiting for SMS… use this number on ${o.service} now.`}</div>}
           {o.rented && o.sms.length > 0 && <div className="waiting small"><span className="spinner" /> Listening for new SMS until {fmtDate(o.expiresAt)}</div>}
           <div className="row-between order-foot">
             <span className="muted small">{o.rented ? 'Rental ends in' : 'Expires in'} <Countdown to={o.expiresAt} /></span>
             <div className="btn-row">
+              {canResend(o) && <ResendButton o={o} />}
               <ExtendButton o={o} />
               {o.status === 'waiting'
                 ? <button className="btn danger sm" onClick={() => attempt(() => cancelOrder(o.id), 'Cancelled and refunded')}>Cancel</button>
@@ -135,12 +137,34 @@ function OrderTable({ orders }) {
                 {o.rented && ['waiting', 'received'].includes(o.status) && <div className="muted small">until {new Date(o.expiresAt).toLocaleDateString()}</div>}
               </td>
               <td className="small">{fmtDate(o.createdAt)}</td>
-              <td>{canExtend(o) && <ExtendButton o={o} />}</td>
+              <td><div className="btn-row nowrap">{canResend(o) && <ResendButton o={o} />}{canExtend(o) && <ExtendButton o={o} />}</div></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function ResendButton({ o }) {
+  const db = useDB()
+  const [busy, setBusy] = useState(false)
+  const cost = resendCost(o, db)
+  async function go() {
+    setBusy(true)
+    try {
+      await resendCode(o.id)
+      toast_(`New code requested for ${money(cost)} — waiting for SMS…`)
+      if (!window.location.hash.startsWith('#/dashboard/active') && window.location.hash !== '#/dashboard') navigate('/dashboard/active')
+    } catch (e) {
+      toast_(e.message, 'error')
+    }
+    setBusy(false)
+  }
+  return (
+    <button className="btn sm resend" onClick={go} disabled={busy} title="Get another code on this same number">
+      {busy ? <span className="spinner light" /> : <span className="spin-icon">🔁</span>} Resend {money(cost)}
+    </button>
   )
 }
 

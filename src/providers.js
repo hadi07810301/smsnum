@@ -133,5 +133,12 @@ export async function finishNumber(p, id) {
 export async function requestAnotherSms(p, id) {
   if (p.type === 'smsactivate') return sa(p, 'setStatus', { id, status: 3 })
 }
+// 5SIM: buy the same number again for the same service; returns the new order id
+export async function reuseNumber(p, order) {
+  const service = order.providerService || ''
+  const phone = order.number.replace(/[^\d]/g, '')
+  const r = await fivesim(p, `/user/reuse/${service}/${phone}`)
+  return String(r.id)
+}
 
 function authH(c) { return c.authHeader ? { Authorization: c.authHeader } : {} }

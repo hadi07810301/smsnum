@@ -425,6 +425,17 @@ function ServiceForm({ db, value, onDone }) {
       </div>
 
       <fieldset className="custom-box">
+        <legend>Resend price for this service</legend>
+        <label className="rent-cell" style={{ maxWidth: 220 }}>
+          <span>🔁 Resend code</span>
+          <div className="money-input"><span>$</span>
+            <input className="input" type="number" step="0.01" min="0" placeholder={(numberPrice * (db.settings.resendMult ?? 0.5)).toFixed(2)} value={v.resendPrice ?? ''} onChange={set('resendPrice')} />
+          </div>
+          <small className="muted">{v.resendPrice == null || v.resendPrice === '' ? `default (${Math.round((db.settings.resendMult ?? 0.5) * 100)}% of price)` : 'custom'}</small>
+        </label>
+      </fieldset>
+
+      <fieldset className="custom-box">
         <legend>Extension prices for this service</legend>
         <p className="muted small">Leave empty to use the default from Settings. Prices are the same for every country. Default shown for {base.name} ({money(numberPrice)} number).</p>
         <div className="rent-grid">
@@ -592,6 +603,7 @@ function Settings({ db }) {
   const [pm, setPm] = useState(s.paymentMethods)
   const [plans, setPlans] = useState(s.rentPlans || [])
   const [shortMult, setShortMult] = useState(s.extendMult ?? 0.5)
+  const [resendPct, setResendPct] = useState(Math.round((s.resendMult ?? 0.5) * 100))
   const setPlan = (i, k, val) => setPlans(plans.map((p, j) => (j === i ? { ...p, [k]: val } : p)))
   const [cred, setCred] = useState({ adminUser: s.adminUser, adminPass: '' })
   const num = (k) => (e) => setF({ ...f, [k]: Number(e.target.value) })
@@ -613,8 +625,14 @@ function Settings({ db }) {
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
             const clean = plans.filter((p) => p.label.trim()).map((p) => ({ ...p, minutes: Math.max(1, Math.round(Number(p.days) ? Number(p.days) * 1440 : p.minutes)), mult: Number(p.mult) || 0, price: Number(p.price) || 0, days: undefined }))
-            saveSettings({ rentPlans: clean, extendMult: Number(shortMult) || 0 }); setPlans(clean); toast('Extension prices saved')
+            saveSettings({ rentPlans: clean, extendMult: Number(shortMult) || 0, resendMult: (Number(resendPct) || 0) / 100 }); setPlans(clean); toast('Resend & extension prices saved')
           }}>
+            <h3>Resend price</h3>
+            <div className="plan-edit short">
+              <span><b>🔁 Resend code</b> <span className="muted small">(new code on the same number)</span></span>
+              <div className="money-input"><input className="input" type="number" min="0" max="500" step="1" value={resendPct} onChange={(e) => setResendPct(e.target.value)} /><span style={{ paddingRight: 10 }}>%</span></div>
+              <span className="muted small">of the buying price, e.g. {money(0.24 * (Number(resendPct) || 0) / 100)} for a $0.24 number</span>
+            </div>
             <h3>Number extension plans</h3>
             <p className="muted small">Default prices for keeping a number longer. Choose <b>Fixed $</b> for one price for every number, or <b>× number</b> to multiply the number's price. You can still set a different price per service in <a className="link" href="#/admin/services">Services</a>.</p>
             <div className="plan-edit short">
@@ -642,7 +660,7 @@ function Settings({ db }) {
               <button type="button" className="btn ghost sm" onClick={() => setPlans([...plans, { id: 'p' + Date.now(), label: 'New plan', minutes: 1440, days: 1, priceType: 'fixed', price: 1, mult: 3, enabled: true }])}>＋ Add plan</button>
             </div>
             <p className="muted small">Change the short extension's length under General → Extend time.</p>
-            <button className="btn full">Save extension prices</button>
+            <button className="btn full">Save resend & extension prices</button>
           </form>
           <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings({ paymentMethods: pm }); toast('Payment methods saved') }}>
             <h3>Payment methods</h3>

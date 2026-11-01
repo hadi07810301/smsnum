@@ -71,7 +71,8 @@ export default function Buy() {
             <li><span>Price</span><b>{money(priceFor(pick, c))}</b></li>
             <li><span>Your balance</span><b>{money(user.balance)}</b></li>
             <li><span>Active for</span><b>{db.settings.orderMinutes} minutes</b></li>
-            <li><span>Extend</span><b>+{db.settings.extendMinutes} min for {money(priceFor(pick, c) / 2)}</b></li>
+            <li><span>Resend code</span><b>{money(pick.resendPrice != null && pick.resendPrice !== '' ? Number(pick.resendPrice) : priceFor(pick, c) * (db.settings.resendMult ?? 0.5))}</b></li>
+            <li><span>Extend</span><b>from {money(priceFor(pick, c) * (db.settings.extendMult ?? 0.5))}</b></li>
           </ul>
           <p className="muted small">If no SMS arrives before the number expires, the full price is refunded automatically.</p>
           {user.balance < priceFor(pick, c) ? (
