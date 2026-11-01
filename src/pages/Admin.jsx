@@ -662,14 +662,32 @@ function Settings({ db }) {
             <p className="muted small">Change the short extension's length under General → Extend time.</p>
             <button className="btn full">Save resend & extension prices</button>
           </form>
-          <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings({ paymentMethods: pm }); toast('Payment methods saved') }}>
+          <form className="card form" onSubmit={(e) => {
+            e.preventDefault()
+            if (pm.some((m) => m.enabled && !m.details.trim())) return toast('An enabled method has no address. Fill it in or switch it off.', 'error')
+            saveSettings({ paymentMethods: pm }); toast('Payment methods saved')
+          }}>
             <h3>Payment methods</h3>
-            {pm.map((m, i) => (
-              <div key={m.id} className="pm-row">
-                <label className="check"><input type="checkbox" checked={m.enabled} onChange={(e) => setPm(pm.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)))} /> <b>{m.name}</b></label>
-                <input className="input" value={m.details} onChange={(e) => setPm(pm.map((x, j) => (j === i ? { ...x, details: e.target.value } : x)))} />
-              </div>
-            ))}
+            <p className="muted small">Customers see the enabled methods on the Recharge page. Wallet addresses get a QR code and a copy button.</p>
+            {pm.map((m, i) => {
+              const setM = (k, val) => setPm(pm.map((x, j) => (j === i ? { ...x, [k]: val } : x)))
+              return (
+                <div key={m.id} className={'pm-card' + (m.enabled ? ' on' : '')}>
+                  <div className="row-between">
+                    <label className="check"><input type="checkbox" checked={m.enabled} onChange={(e) => setM('enabled', e.target.checked)} /> <b>{m.name || 'New method'}</b></label>
+                    <button type="button" className="icon-btn" aria-label="Remove method" onClick={() => confirm('Remove this payment method?') && setPm(pm.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+                  <div className="grid-2">
+                    <input className="input" placeholder="Name (e.g. USDT (BEP20))" value={m.name} onChange={(e) => setM('name', e.target.value)} />
+                    <input className="input" placeholder="Network (e.g. BNB Smart Chain (BEP20))" value={m.network || ''} onChange={(e) => setM('network', e.target.value)} />
+                  </div>
+                  <input className="input mono small" placeholder="Wallet address / account number / Pay ID" value={m.details} onChange={(e) => setM('details', e.target.value)} />
+                  <label className="check small"><input type="checkbox" checked={!!m.qr} onChange={(e) => setM('qr', e.target.checked)} /> Show QR code</label>
+                  {m.enabled && !m.details.trim() && <span className="badge bad">Add the address before enabling</span>}
+                </div>
+              )
+            })}
+            <button type="button" className="btn ghost sm" onClick={() => setPm([...pm, { id: 'm' + Date.now(), name: '', network: '', details: '', qr: false, enabled: false }])}>＋ Add payment method</button>
             <button className="btn full">Save payment methods</button>
           </form>
           <form className="card form" onSubmit={(e) => {

@@ -13,6 +13,8 @@ const MIN = 60 * 1000
 // to match your provider's own code list.
 const SVC_CODES = { WhatsApp: 'wa', Telegram: 'tg', 'Google / Gmail': 'go', Facebook: 'fb', Instagram: 'ig', TikTok: 'lf', 'X (Twitter)': 'tw', Discord: 'ds', Microsoft: 'mm', Amazon: 'am', Uber: 'ub', Snapchat: 'fu', LinkedIn: 'tn', Viber: 'vi', WeChat: 'wb', Signal: 'bw', Netflix: 'nf', Shopee: 'ka', Line: 'me', Yahoo: 'mb', 'Other / Any service': 'ot' }
 const CTRY_ISO = { 'us-nv': 'us', 'us-v': 'us', uk: 'gb', ca: 'ca', hk: 'hk', id: 'id', au: 'au' }
+const BEP20_METHOD = { id: 'bep20', name: 'USDT (BEP20)', network: 'BNB Smart Chain (BEP20)', details: '0xc6a794577ffcd2307c04107642ce17f465356b85', qr: true, enabled: true }
+const PLACEHOLDERS = ['TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'Pay ID: 000000000', '01XXXXXXXXX (Send Money)']
 export const DEFAULT_PLANS = [
   { id: 'd1', label: '1 day', minutes: 1440, mult: 3, enabled: true },
   { id: 'd7', label: '7 days', minutes: 10080, mult: 8, enabled: true },
@@ -51,6 +53,13 @@ function migrate(d) {
   d.settings.rentPlans.forEach((p) => { p.priceType ||= 'mult'; if (p.price == null) p.price = 1 })
   if (d.settings.extendMult == null) d.settings.extendMult = 0.5
   if (d.settings.resendMult == null) d.settings.resendMult = 0.5
+  // payment methods: add the BEP20 wallet, switch off unfilled placeholder details
+  if (!d.settings.paymentMethods.some((m) => m.id === 'bep20')) d.settings.paymentMethods.unshift({ ...BEP20_METHOD })
+  d.settings.paymentMethods.forEach((m) => {
+    if (PLACEHOLDERS.includes(m.details)) { m.details = ''; m.enabled = false }
+    if (m.qr == null) m.qr = /usdt|trc|bep|erc/i.test(m.name)
+    if (m.network == null) m.network = ''
+  })
   d.services.forEach((x) => { x.rentPrices ||= {} })
   return d
 }
@@ -68,10 +77,11 @@ function seed() {
       adminUser: 'admin',
       adminPass: 'admin',
       paymentMethods: [
-        { id: 'usdt', name: 'USDT (TRC20)', details: 'TXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', enabled: true },
-        { id: 'binance', name: 'Binance Pay', details: 'Pay ID: 000000000', enabled: true },
-        { id: 'bkash', name: 'bKash', details: '01XXXXXXXXX (Send Money)', enabled: true },
-        { id: 'nagad', name: 'Nagad', details: '01XXXXXXXXX (Send Money)', enabled: true },
+        BEP20_METHOD,
+        { id: 'usdt', name: 'USDT (TRC20)', network: 'Tron (TRC20)', details: '', qr: true, enabled: false },
+        { id: 'binance', name: 'Binance Pay', network: 'Binance Pay ID', details: '', qr: false, enabled: false },
+        { id: 'bkash', name: 'bKash', network: 'Send Money', details: '', qr: false, enabled: false },
+        { id: 'nagad', name: 'Nagad', network: 'Send Money', details: '', qr: false, enabled: false },
       ],
     },
     countries: COUNTRIES,
@@ -401,7 +411,8 @@ export function requestRecharge({ amount, method, txid }) {
     amount = Number(amount)
     if (!u) throw new Error('Please log in')
     if (!(amount >= d.settings.minRecharge)) throw new Error(`Minimum recharge is ${money(d.settings.minRecharge)}`)
-    if (!txid.trim()) throw new Error('Enter the transaction ID')
+    if (!method) throw new Error('No payment method is available right now')
+    if (!txid.trim()) throw new Error('Enter the transaction ID (TxID / hash)')
     d.recharges.unshift({ id: uid('r_'), userId: u.id, amount, method, txid: txid.trim(), status: 'pending', at: now() })
   })
 }

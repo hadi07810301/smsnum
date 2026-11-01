@@ -291,9 +291,28 @@ function Recharge({ db, user }) {
               {methods.map((m) => <option key={m.id}>{m.name}</option>)}
             </select>
           </label>
-          {method && <div className="note">Send <b>{money(f.amount)}</b> to:<br /><span className="mono">{method.details}</span></div>}
-          <label>Transaction ID
-            <input className="input" placeholder="Paste the transaction / reference ID" value={f.txid} onChange={(e) => setF({ ...f, txid: e.target.value })} />
+          {method && (
+            <div className="pay-box">
+              <div className="row-between">
+                <b>Send {money(f.amount)} {/usdt/i.test(method.name) ? 'USDT' : ''}</b>
+                {method.network && <span className="badge info">{method.network}</span>}
+              </div>
+              {method.qr && method.details && (
+                <img className="pay-qr" width="168" height="168" alt={'QR code for ' + method.details}
+                  src={'https://api.qrserver.com/v1/create-qr-code/?size=336x336&margin=8&data=' + encodeURIComponent(method.details)} />
+              )}
+              <div className="copy-field">
+                <code className="addr">{method.details}</code>
+                <button type="button" className="btn" onClick={() => copy(method.details)}>Copy</button>
+              </div>
+              {/bep20/i.test(method.network + method.name) && (
+                <p className="pay-warn">⚠️ Send only <b>USDT</b> on <b>BNB Smart Chain (BEP20)</b>. Other coins or networks will be lost.</p>
+              )}
+            </div>
+          )}
+          {!methods.length && <div className="alert warn">No payment method is available right now. Please contact support.</div>}
+          <label>Transaction ID (TxID / hash)
+            <input className="input mono" placeholder="Paste the transaction / reference ID" value={f.txid} onChange={(e) => setF({ ...f, txid: e.target.value })} />
           </label>
           <button className="btn full">Submit recharge</button>
           <p className="muted small">Minimum {money(db.settings.minRecharge)}. Requests are reviewed and approved by an admin.</p>

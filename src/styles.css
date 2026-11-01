@@ -569,3 +569,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .btn.resend:hover .spin-icon { transform: rotate(-180deg); }
 .nowrap { flex-wrap: nowrap; }
 .table td.mono { white-space: nowrap; }
+
+/* payment box */
+.pay-box { display: grid; gap: 12px; justify-items: stretch; padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); animation: pop .35s var(--ease); }
+.pay-qr { justify-self: center; width: 168px; height: 168px; background: #fff; padding: 6px; border-radius: 12px; box-shadow: var(--shadow); transition: transform .3s var(--ease); }
+.pay-qr:hover { transform: scale(1.06); }
+.pay-warn { margin: 0; font-size: .82rem; color: var(--warn); background: var(--warn-bg); padding: 8px 10px; border-radius: 8px; }
+.pm-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; transition: border-color .2s; }
+.pm-card.on { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.addr { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85rem; word-break: break-all; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; user-select: all; }
