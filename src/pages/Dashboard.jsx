@@ -10,7 +10,7 @@ import { explorerTx } from '../chain.js'
 const TABS = [
   ['', '📊', 'Overview'], ['active', '📲', 'Active Numbers'], ['rentals', '📅', 'My Rentals'], ['orders', '🧾', 'Orders'], ['sms', '💬', 'SMS History'],
   ['recharge', '💳', 'Recharge'], ['transactions', '📜', 'Transactions'], ['transfer', '🔁', 'Transfer'],
-  ['referrals', '🤝', 'Referrals'], ['api', '🔌', 'API Access'], ['support', '🎧', 'Support'], ['profile', '👤', 'Profile'],
+  ['referrals', '🤝', 'Referrals'], ['support', '🎧', 'Support'], ['profile', '👤', 'Profile'],
 ]
 
 export default function Dashboard() {
