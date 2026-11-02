@@ -47,7 +47,6 @@ export default function Dashboard() {
             )}
           </a>
         ))}
-        <a className="side-link" href="#/login?add=1"><span>➕</span>Add account</a>
         <button className="side-link" onClick={() => { const next = logout(); if (!next) navigate('/') }}><span>🚪</span>Sign out</button>
       </aside>
       <section className="dash-main tab-enter" key={tab}>
