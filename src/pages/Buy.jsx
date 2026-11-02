@@ -17,7 +17,7 @@ export default function Buy() {
   return (
     <div className="container section">
       <h1>Buy a number</h1>
-      <p className="muted">Choose a country, then pick the service you want to verify.</p>
+      <p className="muted">Select a country and the app you want to verify. Numbers are issued instantly and refunded automatically if no code arrives.</p>
 
       <div className="chips" role="tablist">
         {countries.map((x) => (

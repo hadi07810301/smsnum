@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePath, Link, navigate } from './router.jsx'
-import { useDB, currentUser, money, toggleTheme, logout, logoutAll, switchAccount, signedInAccounts } from './store.js'
-import { Toasts, toast, attempt, avatarColor } from './ui.jsx'
+import { useDB, currentUser, money, toggleTheme, logout, logoutAll, switchAccount, signedInAccounts, activeNotice } from './store.js'
+import { Toasts, toast, attempt, avatarColor, playAlert } from './ui.jsx'
 import Home from './pages/Home.jsx'
 import Buy from './pages/Buy.jsx'
 import Rent from './pages/Rent.jsx'
@@ -90,6 +90,66 @@ function AccountMenu({ user }) {
   )
 }
 
+// Plays a sound + shows a notice when a code arrives, a number is about to expire, or it expires.
+// One-time numbers warn 2 minutes before; rentals warn 1 hour before.
+function AlertWatcher() {
+  const db = useDB()
+  const user = currentUser(db)
+  const seen = useRef(null)
+  const [, tick] = useState(0)
+  useEffect(() => { const i = setInterval(() => tick((x) => x + 1), 5000); return () => clearInterval(i) }, [])
+  useEffect(() => {
+    if (!user) { seen.current = null; return }
+    const mine = db.orders.filter((o) => o.userId === user.id)
+    const first = !seen.current || seen.current.user !== user.id
+    if (first) {
+      seen.current = { user: user.id, sms: {}, status: {}, warned: {} }
+      mine.forEach((o) => { seen.current.sms[o.id] = o.sms.length; seen.current.status[o.id] = o.status })
+      return
+    }
+    const st = seen.current
+    const sound = user.sound !== false
+    let play = null
+    for (const o of mine) {
+      const prevSms = st.sms[o.id] ?? 0, prevStatus = st.status[o.id]
+      if (o.sms.length > prevSms) { play = 'sms'; toast(`📩 New code for ${o.service}: ${o.sms[o.sms.length - 1].code}`) }
+      const live = ['waiting', 'received'].includes(o.status)
+      const left = o.expiresAt - Date.now()
+      const warnAt = o.rented ? 3600000 : 120000
+      if (live && left > 0 && left <= warnAt && !st.warned[o.id + ':' + o.expiresAt]) {
+        st.warned[o.id + ':' + o.expiresAt] = true
+        play ||= 'warn'
+        toast(`⏰ ${o.number} (${o.service}) expires in ${o.rented ? 'less than 1 hour' : 'about 2 minutes'}. Extend it to keep it.`, 'error', 10000)
+      }
+      if (['waiting', 'received'].includes(prevStatus) && ['expired', 'completed'].includes(o.status) && o.expiresAt <= Date.now() + 1000) {
+        play = play === 'sms' ? 'sms' : 'expired'
+        toast(`⌛ ${o.number} (${o.service}) has expired.`)
+      }
+      st.sms[o.id] = o.sms.length; st.status[o.id] = o.status
+    }
+    if (play && sound) playAlert(play)
+  })
+  return null
+}
+
+// admin notice to all users (24h), each user can hide it
+function NoticeBar() {
+  const db = useDB()
+  const n = activeNotice(db)
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem('smsnum_notice_hidden') } catch { return null } })
+  if (!n || hidden === n.id) return null
+  const icon = { info: 'ℹ️', success: '✅', warn: '⚠️' }[n.tone] || 'ℹ️'
+  return (
+    <div className={'notice-bar ' + n.tone} role="status">
+      <div className="container notice-inner">
+        <span className="notice-icon">{icon}</span>
+        <span className="grow">{n.text}</span>
+        <button className="notice-x" aria-label="Hide notice" onClick={() => { try { localStorage.setItem('smsnum_notice_hidden', n.id) } catch { /* ignore */ } setHidden(n.id) }}>✕</button>
+      </div>
+    </div>
+  )
+}
+
 function Footer() {
   const db = useDB()
   return (
@@ -97,7 +157,7 @@ function Footer() {
       <div className="container footer-inner">
         <div>
           <div className="logo">📱 <b>{db.settings.siteName}</b></div>
-          <p className="muted small">Virtual numbers for receiving SMS verification codes. Pay only for what you use.</p>
+          <p className="muted small">Virtual phone numbers for secure SMS verification and long-term rentals. Pay only for what you use.</p>
         </div>
         <div className="footer-links">
           <Link to="/buy">Buy Numbers</Link>
@@ -151,12 +211,14 @@ export default function App() {
     <>
       <div className="scroll-progress" aria-hidden="true" />
       {db.settings.announcement && <div className="announce">{db.settings.announcement}</div>}
+      <NoticeBar />
       <Header />
       <main key={path.startsWith('/dashboard') ? '/dashboard' : path} className="page-enter">{page}</main>
       <Footer />
       <BottomNav />
       <button className="to-top" aria-label="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑</button>
       <Toasts />
+      <AlertWatcher />
     </>
   )
 }

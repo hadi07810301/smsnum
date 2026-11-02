@@ -24,6 +24,14 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 **Buying numbers**
 - Pick a custom **area code** (US/Canada lists editable per country, +20% surcharge editable), **quantity** (up to 10, editable) and **number period** (20 minutes up to 90 days) with a live total
 
+**Accounts & security**
+- Captcha (letters + numbers) on sign-up and login; confirm password on sign-up
+- One account per email (case, spaces, and Gmail dots/+tags count as the same email)
+- Change password requires the current password
+- Logged-in devices list (device, country, IP, last active) with "Log out" / "Log out all others"
+- Suspended accounts are signed out everywhere and can't log in
+- Sound + on-screen alerts when a code arrives, before a number expires (2 min one-time / 1 hour rental) and when it expires
+
 **User dashboard**
 - Overview: balance, orders, active numbers, referrals, low-balance warning
 - Active numbers with live countdown, copy number / code, cancel with refund
@@ -34,6 +42,9 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 - Referral earnings, API key, support tickets, profile
 
 **Admin panel** (`/#/admin`, login `admin` / `admin`)
+- Users by country chart (IP detected at sign-up/login), user country/IP/devices, suspend/reactivate
+- 24-hour notice bar for all users; Telegram support link shown on every user's overview
+- Per-provider options: allow extending, free resend
 - Overview stats + 7-day orders chart + top services
 - Users: search, add/deduct balance, ban/unban, delete
 - Orders: filter, cancel (with refund)

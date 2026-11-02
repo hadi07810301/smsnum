@@ -13,21 +13,20 @@ export default function Home() {
       <section className="hero">
         <div className="container hero-inner">
           <div>
-            <span className="eyebrow rise" style={{ '--d': 0 }}>⚡ Instant virtual numbers</span>
-            <h1 className="rise" style={{ '--d': 1 }}>Receive SMS verification codes for <Rotator words={['WhatsApp', 'Telegram', 'Google', 'TikTok', 'Facebook', 'Instagram']} /> <span className="grad">in seconds</span></h1>
+            <span className="eyebrow rise" style={{ '--d': 0 }}>Trusted virtual numbers for verification</span>
+            <h1 className="rise" style={{ '--d': 1 }}>Verify your accounts on <Rotator words={['WhatsApp', 'Telegram', 'Google', 'TikTok', 'Facebook', 'Instagram']} /> <span className="grad">without your personal number</span></h1>
             <p className="lead rise" style={{ '--d': 2 }}>
-              Get a temporary phone number for {db.services.length}+ services across {db.countries.length} countries.
-              Numbers start from just <b>{money(isFinite(minPrice) ? minPrice : 0)}</b>. No subscription — pay only for what you use,
-              and get an automatic refund if no SMS arrives.
+              Receive one-time verification codes or rent a dedicated number for {db.services.length}+ apps in {db.countries.length} countries.
+              Prices from <b>{money(isFinite(minPrice) ? minPrice : 0)}</b>, no subscription, and a full refund if a code doesn't arrive.
             </p>
             <div className="hero-cta rise" style={{ '--d': 3 }}>
               <Link to="/buy" className="btn lg shine magnetic">Get a number <span className="arrow">→</span></Link>
               <Link to="/rent" className="btn ghost lg magnetic">📅 Rent a number</Link>
             </div>
             <div className="hero-stats rise" style={{ '--d': 4 }}>
-              <div><b><CountUp value={99} suffix="%" /></b><span>Delivery rate</span></div>
-              <div><b>&lt;<CountUp value={3} suffix="s" /></b><span>Avg. SMS speed</span></div>
-              <div><b><CountUp value={24} />/7</b><span>Support</span></div>
+              <div><b><CountUp value={99} suffix="%" /></b><span>Successful delivery</span></div>
+              <div><b>&lt;<CountUp value={3} suffix="s" /></b><span>Average code delivery</span></div>
+              <div><b><CountUp value={24} />/7</b><span>Customer support</span></div>
             </div>
           </div>
           <div className="phone-wrap rise" style={{ '--d': 2 }} aria-hidden="true">
@@ -56,9 +55,9 @@ export default function Home() {
         <h2 className="section-title reveal">How it works</h2>
         <div className="grid-3">
           {[
-            ['💳', '1. Top up your wallet', 'Recharge with USDT (BEP20 / TRC20) or Binance Pay. Crypto payments are added automatically.'],
-            ['📲', '2. Pick a service & country', 'Choose WhatsApp, Telegram, Google and more. Get your number instantly.'],
-            ['✅', '3. Receive the code', 'The SMS appears in your dashboard within seconds. No SMS? Full refund.'],
+            ['💳', '1. Add funds', 'Top up with USDT (BEP20 or TRC20) or Binance Pay. Crypto deposits are confirmed on the blockchain and credited automatically.'],
+            ['📲', '2. Choose a number', 'Select the app and country you need. Your number is issued instantly, with an optional area code.'],
+            ['✅', '3. Receive your code', 'The verification code appears in your dashboard in real time. If no code arrives, you are refunded in full.'],
           ].map(([i, t, d], idx) => (
             <div className="card feature reveal tilt" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
@@ -85,12 +84,12 @@ export default function Home() {
         <h2 className="section-title reveal">Why choose {db.settings.siteName}</h2>
         <div className="grid-3">
           {[
-            ['🌍', 'Many countries', <span className="flag-row">{db.countries.map((c) => <Flag key={c.id} country={c} />)}</span>],
-            ['♻️', 'Auto refunds', 'Waiting numbers that never get an SMS are refunded to your wallet automatically.'],
-            ['⏱️', 'Extend sessions', 'Need more time? Extend any active number for 50% of its price.'],
-            ['🤝', 'Referral rewards', `Earn ${db.settings.referralPercent}% of every recharge your friends make.`],
-            ['🔌', 'Developer API', 'Automate number purchases and SMS checks with a simple REST API.'],
-            ['🔒', 'Private & secure', 'Your numbers and messages are only visible in your own dashboard.'],
+            ['🌍', 'Global coverage', <span className="flag-row">{db.countries.map((c) => <Flag key={c.id} country={c} />)}</span>],
+            ['♻️', 'Guaranteed refunds', 'You only pay for codes you receive. Numbers that get no SMS are refunded to your balance automatically.'],
+            ['📅', 'Long-term rentals', 'Keep the same number for up to 90 days for accounts you log in to regularly.'],
+            ['🤝', 'Referral programme', `Earn ${db.settings.referralPercent}% commission on every deposit made by people you invite.`],
+            ['⚡', 'Instant & automated', 'Numbers are issued in seconds, codes arrive live, and crypto top-ups are credited without waiting for approval.'],
+            ['🔒', 'Privacy first', 'Keep your personal phone number private. Your numbers and messages are visible only in your account.'],
           ].map(([i, t, d], idx) => (
             <div className="card feature reveal tilt" style={{ '--i': idx }} key={t}><div className="feature-icon">{i}</div><h3>{t}</h3><p className="muted">{d}</p></div>
           ))}
@@ -100,8 +99,8 @@ export default function Home() {
       <section className="container section">
         <div className="cta-band reveal">
           <div>
-            <h2>Ready to get your first number?</h2>
-            <p>Create a free account in 30 seconds.</p>
+            <h2>Start verifying in under a minute</h2>
+            <p>Create a free account, add funds and get your first number instantly.</p>
           </div>
           <Link to="/register" className="btn lg light magnetic">Create account</Link>
         </div>

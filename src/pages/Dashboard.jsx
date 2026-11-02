@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Link, usePath, navigate } from '../router.jsx'
 import {
   useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, extendOptions, canExtend, finishOrder, resendCode, resendCost, canResend, requestRecharge,
-  transferBalance, regenerateApiKey, updateProfile, createTicket, replyTicket, closeTicket, logout,
+  transferBalance, regenerateApiKey, updateProfile, changePassword, setSoundAlerts, logoutDevice, logoutOtherDevices, deviceId, suspendedAccount, createTicket, replyTicket, closeTicket, logout,
 } from '../store.js'
-import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_, avatarColor } from '../ui.jsx'
+import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_, avatarColor, playAlert } from '../ui.jsx'
 import { explorerTx } from '../chain.js'
 
 const TABS = [
@@ -19,6 +19,23 @@ export default function Dashboard() {
   const path = usePath()
   const tab = path.split('/')[2] || ''
 
+  const suspended = !user && suspendedAccount(db)
+  if (suspended) {
+    return (
+      <div className="container section center">
+        <div className="suspended">
+          <div className="empty-icon">⛔</div>
+          <h1>Account suspended</h1>
+          <p className="muted">The account <b>{suspended.email}</b> has been suspended by the administrator. You can't buy numbers or use its balance.</p>
+          <p className="muted">If you think this is a mistake, please contact support{db.settings.telegramSupport ? ' on Telegram' : ''}.</p>
+          <div className="hero-cta center-row">
+            {db.settings.telegramSupport && <a className="btn" href={db.settings.telegramSupport} target="_blank" rel="noreferrer">✈️ Contact support</a>}
+            <button className="btn ghost" onClick={() => { logout(); navigate('/login') }}>Use another account</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!user) {
     return (
       <div className="container section center">
@@ -42,8 +59,11 @@ export default function Dashboard() {
         {TABS.map(([k, i, l]) => (
           <a key={k} href={'#/dashboard' + (k ? '/' + k : '')} className={'side-link' + (tab === k ? ' active' : '')}>
             <span>{i}</span>{l}
-            {k === 'active' && orders.some((o) => ['waiting', 'received'].includes(o.status)) && (
-              <span className="dot-count">{orders.filter((o) => ['waiting', 'received'].includes(o.status)).length}</span>
+            {k === 'active' && orders.some((o) => !o.rented && ['waiting', 'received'].includes(o.status)) && (
+              <span className="dot-count">{orders.filter((o) => !o.rented && ['waiting', 'received'].includes(o.status)).length}</span>
+            )}
+            {k === 'rentals' && orders.some((o) => o.rented && ['waiting', 'received'].includes(o.status)) && (
+              <span className="dot-count">{orders.filter((o) => o.rented && ['waiting', 'received'].includes(o.status)).length}</span>
             )}
           </a>
         ))}
@@ -66,17 +86,20 @@ function Overview({ db, user, orders }) {
       )}
       <div className="stats">
         <Stat icon="💰" label="Balance" value={money(user.balance)} tone="primary" />
+        <Stat icon="📲" label="Active numbers" value={active.filter((o) => !o.rented).length} />
+        <Stat icon="📅" label="Active rentals" value={active.filter((o) => o.rented).length} />
         <Stat icon="🧾" label="Total orders" value={orders.length} />
-        <Stat icon="📲" label="Active numbers" value={active.length} />
-        <Stat icon="🤝" label="Referrals" value={db.users.filter((u) => u.referredBy === user.id).length} />
       </div>
       <div className="quick">
         <Link to="/buy" className="btn">📲 Buy number</Link>
+        <Link to="/rent" className="btn ghost">📅 Rent number</Link>
         <a href="#/dashboard/recharge" className="btn ghost">💳 Recharge</a>
-        <a href="#/dashboard/support" className="btn ghost">🎧 Get help</a>
+        {db.settings.telegramSupport
+          ? <a href={db.settings.telegramSupport} target="_blank" rel="noreferrer" className="btn ghost tg">✈️ Telegram support</a>
+          : <a href="#/dashboard/support" className="btn ghost">🎧 Support</a>}
       </div>
-      <h2 className="h2">Active numbers</h2>
-      {active.length ? <OrderCards orders={active} db={db} /> : <Empty icon="📲" text="No active numbers. Buy one to receive an SMS code." />}
+      <div className="row-between"><h2 className="h2">Your active numbers</h2>{active.length > 0 && <span className="muted small">{active.length} active</span>}</div>
+      {active.length ? <CompactOrders orders={active} /> : <Empty icon="📲" text="No active numbers. Buy or rent one to receive SMS codes." />}
       <h2 className="h2">Recent orders</h2>
       <OrderTable orders={orders.slice(0, 5)} />
     </>
@@ -84,6 +107,65 @@ function Overview({ db, user, orders }) {
 }
 
 const appName = (o) => (/any service/i.test(o.service) ? 'any app' : o.service)
+
+// one small line per number (overview)
+function CompactOrders({ orders }) {
+  return (
+    <div className="mini-list">
+      {orders.map((o) => {
+        const code = o.sms[o.sms.length - 1]?.code
+        return (
+          <div className={'mini-row' + (o.status === 'received' ? ' got' : '')} key={o.id}>
+            <span className="service-icon sm">{o.icon}</span>
+            <div className="mini-main">
+              <div className="mini-top"><b>{o.service}</b> <Flag id={o.countryId} /> <span className={'tag ' + (o.rented ? 'rent' : 'one')}>{o.rented ? 'Rental' : 'One-time'}</span></div>
+              <button className="mono mini-num" onClick={() => copy(o.number.replace(/\s/g, ''))} title="Copy number">{o.number}</button>
+            </div>
+            <div className="mini-code">
+              {code
+                ? <button className="mono code-sm" onClick={() => copy(code)} title="Copy code">{code} 📋</button>
+                : <span className="muted small waiting-sm"><span className="spinner" /> waiting</span>}
+            </div>
+            <span className="muted small mini-time">⏱ <Countdown to={o.expiresAt} /></span>
+            <a className="btn ghost sm" href={'#/dashboard/' + (o.rented ? 'rentals' : 'active')}>Open</a>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// search + pages for long lists of numbers
+function useSearchPages(list, perPage = 6) {
+  const [q, setQ] = useState('')
+  const [page, setPage] = useState(1)
+  const term = q.trim().toLowerCase().replace(/\s/g, '')
+  const filtered = term ? list.filter((o) => (o.number + o.service + o.country + (o.sms.map((m) => m.code).join(' '))).toLowerCase().replace(/\s/g, '').includes(term)) : list
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const cur = Math.min(page, pages)
+  return { q, setQ: (v) => { setQ(v); setPage(1) }, items: filtered.slice((cur - 1) * perPage, cur * perPage), page: cur, pages, setPage, total: filtered.length }
+}
+function SearchBar({ sp, placeholder }) {
+  return (
+    <div className="area-search list-search">
+      <span className="area-search-icon">🔍</span>
+      <input className="input" placeholder={placeholder} value={sp.q} onChange={(e) => sp.setQ(e.target.value)} aria-label="Search numbers" />
+      {sp.q && <button type="button" className="area-clear" aria-label="Clear search" onClick={() => sp.setQ('')}>✕</button>}
+    </div>
+  )
+}
+function Pager({ sp }) {
+  if (sp.pages <= 1) return null
+  return (
+    <div className="pager">
+      <button className="btn ghost sm" disabled={sp.page <= 1} onClick={() => sp.setPage(sp.page - 1)}>← Prev</button>
+      {Array.from({ length: sp.pages }, (_, i) => i + 1).map((n) => (
+        <button key={n} className={'chip' + (n === sp.page ? ' on' : '')} onClick={() => sp.setPage(n)}>{n}</button>
+      ))}
+      <button className="btn ghost sm" disabled={sp.page >= sp.pages} onClick={() => sp.setPage(sp.page + 1)}>Next →</button>
+    </div>
+  )
+}
 
 function OrderCards({ orders, db }) {
   return (
@@ -110,7 +192,7 @@ function OrderCards({ orders, db }) {
             <span className="muted small">{o.rented ? 'Rental ends in' : 'Expires in'} <Countdown to={o.expiresAt} /></span>
             <div className="btn-row">
               {canResend(o) && <ResendButton o={o} />}
-              <ExtendButton o={o} />
+              {canExtend(o) && <ExtendButton o={o} />}
               {o.status === 'waiting'
                 ? <button className="btn danger sm" onClick={() => attempt(() => cancelOrder(o.id), 'Cancelled and refunded')}>Cancel</button>
                 : !o.rented && <button className="btn sm" onClick={() => finishOrder(o.id)}>Done</button>}
@@ -133,7 +215,7 @@ function OrderTable({ orders }) {
             <tr key={o.id}>
               <td>{o.icon} {o.service}<div className="muted small"><Flag id={o.countryId} /> {o.country}</div></td>
               <td className="mono">{o.number}</td>
-              <td>{money(o.price)}</td>
+              <td>{money(o.paid ?? o.price)}</td>
               <td className="mono">{o.sms[o.sms.length - 1]?.code || '—'}</td>
               <td>
                 {o.rented && ['waiting', 'received'].includes(o.status) ? <Badge s="info">📅 Rented</Badge> : <Badge s={o.status} />}
@@ -225,24 +307,34 @@ function ExtendModal({ o, onClose }) {
   )
 }
 
+// only rented numbers that are still active; expired rentals drop off automatically (they stay in Orders history)
 function Rentals({ db, orders }) {
-  const active = orders.filter((o) => o.rented && ['waiting', 'received'].includes(o.status))
-  const past = orders.filter((o) => o.rented && !['waiting', 'received'].includes(o.status))
+  const active = orders.filter((o) => o.rented && ['waiting', 'received'].includes(o.status)).sort((a, b) => a.expiresAt - b.expiresAt)
+  const sp = useSearchPages(active, 6)
   return (
     <>
       <div className="row-between"><h1>My rentals</h1><Link to="/rent" className="btn sm">📅 Rent a number</Link></div>
-      {active.length ? <OrderCards orders={active} db={db} /> : <Empty icon="📅" text="You have no rented numbers. Rent one to keep the same number for days." />}
-      {past.length > 0 && <><h2 className="h2">Ended rentals</h2><OrderTable orders={past} /></>}
+      {active.length > 0 && <SearchBar sp={sp} placeholder="Search rentals by number, service, country or code" />}
+      {!active.length ? <Empty icon="📅" text="You have no active rentals. Rent a number to keep it for days." />
+        : !sp.total ? <Empty icon="🔍" text="No rental matches your search." />
+          : <OrderCards orders={sp.items} db={db} />}
+      <Pager sp={sp} />
     </>
   )
 }
 
+// one-time numbers only (rentals live in My Rentals)
 function Active({ db, orders }) {
-  const active = orders.filter((o) => ['waiting', 'received'].includes(o.status))
+  const active = orders.filter((o) => !o.rented && ['waiting', 'received'].includes(o.status))
+  const sp = useSearchPages(active, 6)
   return (
     <>
       <div className="row-between"><h1>Active numbers</h1><Link to="/buy" className="btn sm">＋ New number</Link></div>
-      {active.length ? <OrderCards orders={active} db={db} /> : <Empty icon="📲" text="No active numbers right now." />}
+      {active.length > 0 && <SearchBar sp={sp} placeholder="Search by number, service, country or code" />}
+      {!active.length ? <Empty icon="📲" text="No active one-time numbers right now." />
+        : !sp.total ? <Empty icon="🔍" text="No number matches your search." />
+          : <OrderCards orders={sp.items} db={db} />}
+      <Pager sp={sp} />
     </>
   )
 }
@@ -534,22 +626,64 @@ export function Thread({ ticket }) {
 }
 
 function Profile({ user }) {
-  const [f, setF] = useState({ name: user.name, password: '' })
-  function submit(e) {
-    e.preventDefault()
-    if (f.password && f.password.length < 6) return attempt(() => { throw new Error('Password must be at least 6 characters') })
-    if (attempt(() => updateProfile(f), 'Profile updated')) setF({ ...f, password: '' })
-  }
+  const db = useDB()
+  const [name, setName] = useState(user.name)
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' })
+  const sessions = [...(user.sessions || [])].sort((a, b) => (b.sid === deviceId) - (a.sid === deviceId) || (b.lastSeen || 0) - (a.lastSeen || 0))
+  const others = sessions.filter((x) => x.sid !== deviceId)
   return (
     <>
-      <h1>Profile</h1>
-      <form className="card form narrow" onSubmit={submit}>
-        <label>Name<input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-        <label>Email<input className="input" value={user.email} disabled /></label>
-        <label>New password<input className="input" type="password" placeholder="Leave blank to keep current" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
-        <button className="btn full">Save changes</button>
-        <p className="muted small">Member since {fmtDate(user.createdAt)}</p>
-      </form>
+      <h1>Profile & security</h1>
+      <div className="grid-2">
+        <div className="form" style={{ gap: 16 }}>
+          <form className="card form" onSubmit={(e) => { e.preventDefault(); attempt(() => updateProfile({ name }), 'Profile updated') }}>
+            <h3>Account details</h3>
+            <label>Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} /></label>
+            <label>Email<input className="input" value={user.email} disabled /></label>
+            <button className="btn full">Save changes</button>
+            <p className="muted small">Member since {new Date(user.createdAt).toLocaleDateString()}{user.country ? ` · ${user.country}` : ''}</p>
+          </form>
+
+          <form className="card form" onSubmit={(e) => {
+            e.preventDefault()
+            if (attempt(() => changePassword(pw), 'Password changed')) setPw({ current: '', next: '', confirm: '' })
+          }}>
+            <h3>Change password</h3>
+            <label>Current password<input className="input" type="password" autoComplete="current-password" required value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></label>
+            <label>New password<input className="input" type="password" autoComplete="new-password" required minLength={6} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} /></label>
+            <label>Confirm new password<input className="input" type="password" autoComplete="new-password" required value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} /></label>
+            <button className="btn full">Update password</button>
+            {user.passwordChangedAt && <p className="muted small">Last changed {fmtDate(user.passwordChangedAt)}</p>}
+          </form>
+
+          <div className="card form">
+            <h3>Notifications</h3>
+            <label className="check"><input type="checkbox" checked={user.sound !== false} onChange={(e) => setSoundAlerts(e.target.checked)} /> Sound alerts when a code arrives or a number is about to expire</label>
+            <button type="button" className="btn ghost sm" style={{ justifySelf: 'start' }} onClick={() => playAlert('sms')}>🔊 Test sound</button>
+          </div>
+        </div>
+
+        <div className="card form">
+          <div className="row-between">
+            <h3>Logged-in devices</h3>
+            {others.length > 0 && <button className="btn danger sm" onClick={() => { if (confirm('Log out of all other devices?')) attempt(logoutOtherDevices, 'Logged out of other devices') }}>Log out all others</button>}
+          </div>
+          <div className="device-list">
+            {sessions.map((x) => (
+              <div className="device" key={x.sid}>
+                <span className="device-icon">{x.mobile ? '📱' : '💻'}</span>
+                <div className="grow">
+                  <b>{x.device || 'Unknown device'}</b> {x.sid === deviceId && <span className="badge ok">This device</span>}
+                  <div className="muted small">{[x.country, x.ip].filter(Boolean).join(' · ') || 'Location unknown'}</div>
+                  <div className="muted small">Last active {x.sid === deviceId ? 'now' : fmtDate(x.lastSeen || x.at)} · signed in {fmtDate(x.at)}</div>
+                </div>
+                {x.sid !== deviceId && <button className="btn ghost sm" onClick={() => attempt(() => logoutDevice(x.sid), 'Device logged out')}>Log out</button>}
+              </div>
+            ))}
+          </div>
+          <p className="muted small">See a device you don't recognise? Log it out and change your password.</p>
+        </div>
+      </div>
     </>
   )
 }

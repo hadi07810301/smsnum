@@ -48,9 +48,68 @@ const SERVICES = [
   ['Line', '💚', 0.06], ['Yahoo', '🟣', 0.05], ['Other / Any service', '🌐', 0.05],
 ].map(([name, icon, price], i) => ({ id: 's' + (i + 1), name, icon, price, enabled: true, stock: 50 + ((i * 37) % 400) }))
 
+// same mailbox = same account: ignore case/spaces, and for Gmail also dots and +tags
+export function canonEmail(e) {
+  e = String(e || '').trim().toLowerCase()
+  const [local, domain] = e.split('@')
+  if (!domain) return e
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return local.split('+')[0].replace(/\./g, '') + '@gmail.com'
+  return local.split('+')[0] + '@' + domain
+}
+
+// ---------- devices (each browser gets a device id) ----------
+const DEVICE_KEY = 'smsnum_device_id'
+export const deviceId = (() => {
+  try { let id = localStorage.getItem(DEVICE_KEY); if (!id) { id = 'dev_' + Math.random().toString(36).slice(2, 10); localStorage.setItem(DEVICE_KEY, id) } return id } catch { return 'dev_unknown' }
+})()
+export function deviceName(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser'
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Unknown'
+  return `${browser} on ${os}`
+}
+const isMobileUA = () => typeof navigator !== 'undefined' && /Mobi|Android|iPhone/.test(navigator.userAgent)
+function touchSession(u) {
+  if (!Array.isArray(u.sessions)) u.sessions = []
+  let s = u.sessions.find((x) => x.sid === deviceId)
+  if (!s) { s = { sid: deviceId, device: deviceName(), mobile: isMobileUA(), at: now() }; u.sessions.unshift(s) }
+  s.lastSeen = now()
+  const g = cachedGeo()
+  if (g) { s.ip = g.ip; s.country = g.country; s.countryCode = g.countryCode }
+}
+const hasSession = (u) => !Array.isArray(u.sessions) || u.sessions.some((x) => x.sid === deviceId)
+
+// ---------- IP / country (free public lookup, cached per browser session) ----------
+const GEO_KEY = 'smsnum_geo'
+function cachedGeo() { try { return JSON.parse(sessionStorage.getItem(GEO_KEY) || 'null') } catch { return null } }
+let geoPromise = null
+export function lookupGeo() {
+  const c = cachedGeo()
+  if (c) return Promise.resolve(c)
+  if (geoPromise) return geoPromise
+  const tryOne = async (url, map) => { const r = await fetch(url); if (!r.ok) throw new Error('geo'); const j = await r.json(); const g = map(j); if (!g.countryCode) throw new Error('geo'); return g }
+  geoPromise = tryOne('https://ipapi.co/json/', (j) => ({ ip: j.ip, country: j.country_name, countryCode: j.country_code }))
+    .catch(() => tryOne('https://ipwho.is/', (j) => ({ ip: j.ip, country: j.country, countryCode: j.country_code })))
+    .then((g) => { try { sessionStorage.setItem(GEO_KEY, JSON.stringify(g)) } catch { /* ignore */ } return g })
+    .catch(() => null)
+  return geoPromise
+}
+function trackGeo(userId) {
+  lookupGeo().then((g) => {
+    if (!g) return
+    update((d) => {
+      const u = d.users.find((x) => x.id === userId)
+      if (!u) return
+      if (!u.country) { u.country = g.country; u.countryCode = g.countryCode; u.signupIp = u.signupIp || g.ip }
+      u.lastIp = g.ip; u.lastCountry = g.country
+      touchSession(u)
+    })
+  })
+}
+
 function migrate(d) {
   d.session ||= { userId: null, admin: false }
   if (!Array.isArray(d.session.accounts)) d.session.accounts = d.session.userId ? [d.session.userId] : []
+  d.users.forEach((u) => { if (!Array.isArray(u.sessions)) { u.sessions = []; if (d.session.accounts.includes(u.id)) touchSession(u) } })
   d.providers ||= []
   d.settings.numberSource ||= 'demo'
   d.settings.activeProvider ||= null
@@ -62,6 +121,10 @@ function migrate(d) {
   if (d.settings.resendMult == null) d.settings.resendMult = 0.5
   if (d.settings.areaCodeFeePct == null) d.settings.areaCodeFeePct = 20
   if (d.settings.maxQty == null) d.settings.maxQty = 10
+  d.settings.telegramSupport ??= ''
+  if (d.settings.announcement === '🎉 Welcome bonus: get 5% extra on your first recharge!') d.settings.announcement = '' // no such bonus exists
+  d.settings.notice ||= { text: '', tone: 'info', until: 0 }
+  d.providers.forEach((p) => { if (p.allowExtend == null) p.allowExtend = true; if (p.freeResend == null) p.freeResend = false })
   d.countries.forEach((x) => { if (x.areaCodes == null) x.areaCodes = AREA_CODES[x.id] || '' })
   // payment methods: add the BEP20 wallet, switch off unfilled placeholder details
   if (!d.settings.paymentMethods.some((m) => m.id === 'bep20')) d.settings.paymentMethods.unshift({ ...BEP20_METHOD })
@@ -95,7 +158,7 @@ function seed() {
   return {
     settings: {
       siteName: 'SMSNum',
-      announcement: '🎉 Welcome bonus: get 5% extra on your first recharge!',
+      announcement: '',
       minRecharge: 1,
       referralPercent: 5,
       orderMinutes: 20,
@@ -176,13 +239,25 @@ function setActiveId(id) {
   try { id ? sessionStorage.setItem(ACTIVE_KEY, id) : sessionStorage.removeItem(ACTIVE_KEY) } catch { /* ignore */ }
 }
 const signedIn = (d) => d.session.accounts || []
+// an account counts as signed in only if it isn't suspended and this device still has a session
+const usable = (u) => u && !u.banned && hasSession(u)
 export const currentUser = (d = db) => {
   const ids = signedIn(d)
   const id = activeId && ids.includes(activeId) ? activeId : ids.includes(d.session.userId) ? d.session.userId : null
-  return d.users.find((u) => u.id === id) || null
+  const u = d.users.find((x) => x.id === id)
+  if (usable(u)) return u
+  return signedInAccounts(d)[0] || null
 }
-export const signedInAccounts = (d = db) => signedIn(d).map((id) => d.users.find((u) => u.id === id)).filter(Boolean)
+export const signedInAccounts = (d = db) => signedIn(d).map((id) => d.users.find((u) => u.id === id)).filter(usable)
+// the active account if it was suspended (so the UI can explain why)
+export const suspendedAccount = (d = db) => {
+  const id = activeId || d.session.userId
+  const u = d.users.find((x) => x.id === id && signedIn(d).includes(x.id))
+  return u && u.banned ? u : null
+}
 function activate(d, id) {
+  const u = d.users.find((x) => x.id === id)
+  if (u) touchSession(u)
   d.session.accounts = [id, ...signedIn(d).filter((x) => x !== id)].slice(0, MAX_ACCOUNTS)
   d.session.userId = id
   setActiveId(id)
@@ -198,7 +273,26 @@ export function switchAccount(id) {
     return u
   })
 }
-export const logoutAll = () => update((d) => { d.session.accounts = []; d.session.userId = null; setActiveId(null) })
+export const logoutAll = () => update((d) => {
+  signedIn(d).forEach((id) => { const u = d.users.find((x) => x.id === id); if (u) u.sessions = (u.sessions || []).filter((x) => x.sid !== deviceId) })
+  d.session.accounts = []; d.session.userId = null; setActiveId(null)
+})
+// devices
+export function logoutDevice(sid) {
+  update((d) => { const u = currentUser(d); if (!u) return; u.sessions = (u.sessions || []).filter((x) => x.sid !== sid) })
+}
+export function logoutOtherDevices() {
+  update((d) => { const u = currentUser(d); if (!u) return; u.sessions = (u.sessions || []).filter((x) => x.sid === deviceId) })
+}
+export const adminLogoutAllDevices = (userId) => update((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.sessions = [] })
+// keep "last active" fresh for this device
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    const u = currentUser()
+    const s = u?.sessions?.find((x) => x.sid === deviceId)
+    if (u && (!s || now() - (s.lastSeen || 0) > 60000)) update((d) => { const x = d.users.find((y) => y.id === u.id); if (x) touchSession(x) })
+  }, 15000)
+}
 
 function randNumber(country, areaCode) {
   const digits = country.code === '+852' ? 8 : country.code === '+62' ? 11 : 10
@@ -251,9 +345,12 @@ function refundWaiting(d, o, status, note) {
 
 // ---------- auth ----------
 export function register({ name, email, password, ref }) {
-  return update((d) => {
+  const user = update((d) => {
     email = email.trim().toLowerCase()
-    if (d.users.some((u) => u.email === email)) throw new Error('An account with this email already exists')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new Error('Enter a valid email address')
+    if (!name.trim()) throw new Error('Enter your name')
+    if (String(password).length < 6) throw new Error('Password must be at least 6 characters')
+    if (d.users.some((u) => canonEmail(u.email) === canonEmail(email))) throw new Error('An account with this email already exists. Please log in instead.')
     const referrer = ref ? d.users.find((u) => u.refCode === ref.trim().toUpperCase()) : null
     const user = {
       id: uid('u_'), name: name.trim(), email, password, balance: 0, createdAt: now(), banned: false,
@@ -264,21 +361,27 @@ export function register({ name, email, password, ref }) {
     activate(d, user.id)
     return user
   })
+  trackGeo(user.id)
+  return user
 }
 
 export function login(email, password) {
-  return update((d) => {
-    const u = d.users.find((x) => x.email === email.trim().toLowerCase() && x.password === password)
-    if (!u) throw new Error('Wrong email or password')
-    if (u.banned) throw new Error('This account has been suspended. Contact support.')
-    activate(d, u.id)
-    return u
+  const u = update((d) => {
+    const x = d.users.find((y) => canonEmail(y.email) === canonEmail(email) && y.password === password)
+    if (!x) throw new Error('Wrong email or password')
+    if (x.banned) throw new Error('This account has been suspended. Please contact support.')
+    activate(d, x.id)
+    return x
   })
+  trackGeo(u.id)
+  return u
 }
 // log out of the active account only; switches to the next signed-in account if there is one
 export const logout = () => update((d) => {
-  const cur = currentUser(d)
-  d.session.accounts = signedIn(d).filter((x) => x !== cur?.id)
+  const id = currentUser(d)?.id || suspendedAccount(d)?.id
+  const cur = d.users.find((x) => x.id === id)
+  if (cur) cur.sessions = (cur.sessions || []).filter((x) => x.sid !== deviceId)
+  d.session.accounts = signedIn(d).filter((x) => x !== id)
   const next = d.session.accounts[0] || null
   d.session.userId = next
   setActiveId(next)
@@ -379,6 +482,9 @@ export function cancelOrder(id) {
 
 // ---------- resend (new code on the same number) ----------
 export function resendCost(o, d = db) {
+  // some providers give the second code free on short numbers: admin can pass that on
+  const prov = o.live && d.providers.find((x) => x.id === o.providerId)
+  if (prov && prov.freeResend) return 0
   const service = d.services.find((x) => x.id === o.serviceId)
   const custom = service?.resendPrice
   if (custom !== undefined && custom !== '' && custom !== null && !Number.isNaN(Number(custom))) return Math.round(Number(custom) * 100) / 100
@@ -430,13 +536,18 @@ export function extendOptions(o, d = db) {
   return [shortPlan(d), ...(d.settings.rentPlans || []).filter((p) => p.enabled)]
     .map((p) => ({ ...p, cost: planCost(p, o.price, service) }))
 }
-export const canExtend = (o) => ['waiting', 'received', 'completed'].includes(o.status)
+// live numbers can only be extended when the provider supports it (admin setting)
+export const canExtend = (o, d = db) => {
+  if (!['waiting', 'received', 'completed'].includes(o.status)) return false
+  const prov = o.live && d.providers.find((x) => x.id === o.providerId)
+  return !(prov && prov.allowExtend === false)
+}
 
 export function extendOrder(id, planId = 'short') {
   return update((d) => {
     const o = d.orders.find((x) => x.id === id)
     const u = currentUser(d)
-    if (!o || !u || !canExtend(o)) throw new Error('This number can no longer be extended')
+    if (!o || !u || !canExtend(o, d)) throw new Error('This number can no longer be extended')
     const plan = extendOptions(o, d).find((p) => p.id === planId)
     if (!plan) throw new Error('This extension plan is not available')
     const cost = plan.cost
@@ -596,9 +707,22 @@ export function transferBalance(email, amount) {
 }
 
 export const regenerateApiKey = () => update((d) => { currentUser(d).apiKey = 'sk_live_' + uid() + uid() })
-export function updateProfile({ name, password }) {
-  update((d) => { const u = currentUser(d); if (name) u.name = name; if (password) u.password = password })
+export function updateProfile({ name }) {
+  update((d) => { const u = currentUser(d); if (!name?.trim()) throw new Error('Name cannot be empty'); u.name = name.trim() })
 }
+export function changePassword({ current, next, confirm }) {
+  update((d) => {
+    const u = currentUser(d)
+    if (!u) throw new Error('Please log in')
+    if (u.password !== current) throw new Error('Current password is incorrect')
+    if (String(next).length < 6) throw new Error('New password must be at least 6 characters')
+    if (next !== confirm) throw new Error('New passwords do not match')
+    if (next === current) throw new Error('New password must be different from the current one')
+    u.password = next
+    u.passwordChangedAt = now()
+  })
+}
+export const setSoundAlerts = (on) => update((d) => { const u = currentUser(d); if (u) u.sound = on })
 
 // ---------- tickets ----------
 export function createTicket(subject, message) {
@@ -655,7 +779,7 @@ export function adjustBalance(userId, amount, note) {
     addTx(d, u.id, amount > 0 ? 'credit' : 'debit', Math.abs(amount), note || 'Adjusted by admin')
   })
 }
-export const toggleBan = (userId) => update((d) => { const u = d.users.find((x) => x.id === userId); u.banned = !u.banned })
+export const toggleBan = (userId) => update((d) => { const u = d.users.find((x) => x.id === userId); u.banned = !u.banned; if (u.banned) { u.suspendedAt = now(); u.sessions = [] } })
 export const deleteUser = (userId) => update((d) => { d.users = d.users.filter((x) => x.id !== userId); d.session.accounts = signedIn(d).filter((x) => x !== userId); if (d.session.userId === userId) d.session.userId = null })
 
 export function saveService(s) {
@@ -721,3 +845,13 @@ export async function testProvider(id) {
     throw e
   }
 }
+
+// ---------- admin notice for everyone (shown for 24 hours) ----------
+export function postNotice(text, tone = 'info', hours = 24) {
+  update((d) => {
+    if (!text.trim()) throw new Error('Write a message first')
+    d.settings.notice = { id: uid('n_'), text: text.trim(), tone, at: now(), until: now() + hours * 3600000 }
+  })
+}
+export const clearNotice = () => update((d) => { d.settings.notice = { text: '', tone: 'info', until: 0 } })
+export const activeNotice = (d = db) => (d.settings.notice?.text && d.settings.notice.until > now() ? d.settings.notice : null)

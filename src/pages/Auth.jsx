@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, navigate } from '../router.jsx'
 import { useDB, login, register, switchAccount, signedInAccounts, currentUser } from '../store.js'
-import { attempt, toast, avatarColor } from '../ui.jsx'
+import { attempt, toast, avatarColor, Captcha, newCaptcha, captchaOk } from '../ui.jsx'
 
 export function Login() {
   const db = useDB()
@@ -10,14 +10,19 @@ export function Login() {
   const accounts = signedInAccounts(db)
   const cur = currentUser(db)
   const [f, setF] = useState({ email: '', password: '' })
+  const [cap, setCap] = useState(newCaptcha)
+  const [capIn, setCapIn] = useState('')
+  const refreshCap = () => { setCap(newCaptcha()); setCapIn('') }
   function submit(e) {
     e.preventDefault()
+    if (!captchaOk(cap, capIn)) { toast('The security code is wrong. Please try again.', 'error'); refreshCap(); return }
     if (accounts.some((a) => a.email === f.email.trim().toLowerCase())) {
       const a = accounts.find((x) => x.email === f.email.trim().toLowerCase())
       if (attempt(() => switchAccount(a.id), 'Switched to ' + a.name)) navigate('/dashboard')
       return
     }
     const u = attempt(() => login(f.email, f.password))
+    if (!u) refreshCap()
     if (u) { toast(adding ? `Added ${u.name}. You can switch accounts from the top bar.` : 'Welcome back!'); navigate('/dashboard') }
   }
   return (
@@ -40,6 +45,7 @@ export function Login() {
         )}
         <label>Email<input className="input" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
         <label>Password<input className="input" type="password" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+        <Captcha code={cap} value={capIn} onChange={setCapIn} onRefresh={refreshCap} />
         <button className="btn full">{adding ? 'Add account' : 'Log in'}</button>
         {!adding && <p className="muted small center">Demo account: <b>demo@smsnum.com</b> / <b>demo123</b></p>}
         <p className="center small">No account? <Link to="/register" className="link">Sign up</Link>{adding && <> · <a href="#/dashboard" className="link">Cancel</a></>}</p>
@@ -50,22 +56,29 @@ export function Login() {
 
 export function Register() {
   const ref = new URLSearchParams(window.location.hash.split('?')[1] || '').get('ref') || ''
-  const [f, setF] = useState({ name: '', email: '', password: '', ref })
+  const [f, setF] = useState({ name: '', email: '', password: '', confirm: '', ref })
+  const [cap, setCap] = useState(newCaptcha)
+  const [capIn, setCapIn] = useState('')
+  const refreshCap = () => { setCap(newCaptcha()); setCapIn('') }
   function submit(e) {
     e.preventDefault()
-    if (f.password.length < 6) return attempt(() => { throw new Error('Password must be at least 6 characters') })
-    if (attempt(() => register(f), 'Account created!')) navigate('/dashboard')
+    if (!captchaOk(cap, capIn)) { toast('The security code is wrong. Please try again.', 'error'); refreshCap(); return }
+    if (f.password !== f.confirm) { toast('Passwords do not match', 'error'); return }
+    if (attempt(() => register(f), 'Account created. Welcome!')) navigate('/dashboard')
+    else refreshCap()
   }
   return (
     <div className="auth-wrap">
       <form className="card auth" onSubmit={submit}>
         <h1>Create account</h1>
-        <p className="muted">Free forever. Pay only for numbers you use.</p>
+        <p className="muted">Free to join. No subscription — you only pay for the numbers you use.</p>
         <label>Full name<input className="input" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
         <label>Email<input className="input" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
-        <label>Password<input className="input" type="password" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+        <label>Password<input className="input" type="password" required minLength={6} autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+        <label>Confirm password<input className="input" type="password" required autoComplete="new-password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} /></label>
         <label>Referral code (optional)<input className="input" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /></label>
-        <button className="btn full">Sign up</button>
+        <Captcha code={cap} value={capIn} onChange={setCapIn} onRefresh={refreshCap} />
+        <button className="btn full">Create account</button>
         <p className="center small">Already have an account? <Link to="/login" className="link">Log in</Link></p>
       </form>
     </div>

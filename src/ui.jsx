@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { useDB } from './store.js'
 
@@ -6,11 +6,11 @@ import { useDB } from './store.js'
 let toasts = []
 const tl = new Set()
 const emit = () => tl.forEach((l) => l())
-export function toast(msg, type = 'success') {
+export function toast(msg, type = 'success', ms) {
   const id = Math.random()
   toasts = [...toasts, { id, msg, type }].slice(-3)
   emit()
-  setTimeout(() => { toasts = toasts.filter((t) => t.id !== id); emit() }, 3500)
+  setTimeout(() => { toasts = toasts.filter((t) => t.id !== id); emit() }, ms || (type === 'error' ? 6000 : 3500))
 }
 export function Toasts() {
   const list = useSyncExternalStore((l) => { tl.add(l); return () => tl.delete(l) }, () => toasts)
@@ -112,4 +112,75 @@ export const avatarColor = (id) => {
   let h = 5381
   for (const ch of String(id)) h = ((h << 5) + h + ch.charCodeAt(0)) | 0
   return `hsl(${Math.abs(h) % 360} 58% 40%)`
+}
+
+// ---------- simple captcha (letters + numbers, drawn on a canvas) ----------
+const CAPTCHA_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
+export const newCaptcha = () => Array.from({ length: 5 }, () => CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)]).join('')
+export const captchaOk = (code, input) => String(input || '').trim().toUpperCase() === code
+
+export function Captcha({ code, value, onChange, onRefresh }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const c = ref.current
+    if (!c) return
+    const dpr = window.devicePixelRatio || 1
+    const W = 150, H = 48
+    c.width = W * dpr; c.height = H * dpr
+    const g = c.getContext('2d')
+    g.scale(dpr, dpr)
+    const dark = document.documentElement.dataset.theme === 'dark'
+    g.fillStyle = dark ? '#1a2723' : '#eef2f0'
+    g.fillRect(0, 0, W, H)
+    for (let i = 0; i < 5; i++) { // noise lines
+      g.strokeStyle = `hsla(${Math.random() * 360},45%,${dark ? 60 : 45}%,.45)`
+      g.lineWidth = 1 + Math.random()
+      g.beginPath(); g.moveTo(Math.random() * W, Math.random() * H); g.bezierCurveTo(Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H); g.stroke()
+    }
+    ;[...code].forEach((ch, i) => {
+      g.save()
+      g.translate(16 + i * 27, 32 + (Math.random() * 8 - 4))
+      g.rotate((Math.random() - 0.5) * 0.6)
+      g.font = `bold ${24 + Math.floor(Math.random() * 5)}px ui-monospace, Menlo, monospace`
+      g.fillStyle = `hsl(${150 + Math.random() * 80},55%,${dark ? 70 : 28}%)`
+      g.fillText(ch, 0, 0)
+      g.restore()
+    })
+    for (let i = 0; i < 40; i++) { g.fillStyle = dark ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.18)'; g.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5) }
+  }, [code])
+  return (
+    <label>Security check
+      <div className="captcha">
+        <canvas ref={ref} style={{ width: 150, height: 48 }} role="img" aria-label="Captcha: type the characters shown" />
+        <button type="button" className="icon-btn" onClick={onRefresh} title="New code" aria-label="New captcha">↻</button>
+        <input className="input mono" placeholder="Type the code" autoComplete="off" autoCapitalize="characters" spellCheck="false" maxLength={5}
+          value={value} onChange={(e) => onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} required />
+      </div>
+    </label>
+  )
+}
+
+// ---------- sound alerts (generated with Web Audio, no files needed) ----------
+let audioCtx
+export function playAlert(kind = 'sms') {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    const notes = {
+      sms: [[880, 0], [1320, 0.13]], // bright two-tone chime: code arrived
+      warn: [[740, 0], [740, 0.22], [740, 0.44]], // three beeps: expiring soon
+      expired: [[660, 0], [440, 0.18], [330, 0.36]], // falling tones: expired
+    }[kind] || [[880, 0]]
+    const t0 = audioCtx.currentTime + 0.02
+    notes.forEach(([f, at]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain()
+      o.type = 'sine'; o.frequency.value = f
+      g.gain.setValueAtTime(0.0001, t0 + at)
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + at + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.18)
+      o.connect(g).connect(audioCtx.destination)
+      o.start(t0 + at); o.stop(t0 + at + 0.2)
+    })
+    navigator.vibrate?.(kind === 'sms' ? 120 : [80, 60, 80])
+  } catch { /* audio not available */ }
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { usePath, navigate } from '../router.jsx'
 import {
-  useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser,
+  useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser, adminLogoutAllDevices,
   saveService, deleteService, saveCountry, deleteCountry, saveSettings, adminCancelOrder, replyTicket, closeTicket, toggleTheme, resetDB, priceFor,
-  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan, checkRecharge,
+  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan, checkRecharge, postNotice, clearNotice, activeNotice,
 } from '../store.js'
 import { explorerTx } from '../chain.js'
 import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
@@ -71,7 +71,15 @@ export default function Admin() {
 }
 
 function Overview({ db }) {
-  const revenue = db.orders.filter((o) => !['cancelled', 'expired'].includes(o.status)).reduce((a, o) => a + o.price, 0)
+  const revenue = db.orders.filter((o) => !['cancelled', 'expired'].includes(o.status)).reduce((a, o) => a + (o.paid ?? o.price), 0)
+  // users by country (from IP lookup at sign-up / login)
+  const byCountry = Object.values(db.users.reduce((m, u) => {
+    const k = u.countryCode || '??'
+    m[k] ||= { code: k, name: u.country || 'Unknown', n: 0 }
+    m[k].n++
+    return m
+  }, {})).sort((a, b) => b.n - a.n)
+  const maxC = Math.max(1, ...byCountry.map((c) => c.n))
   const deposits = db.recharges.filter((r) => r.status === 'approved').reduce((a, r) => a + r.amount, 0)
   const days = [...Array(7)].map((_, i) => {
     const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (6 - i))
@@ -107,6 +115,21 @@ function Overview({ db }) {
           </div>
         </div>
         <div className="card">
+          <div className="row-between"><h3>Users by country</h3><span className="muted small">{db.users.length} users · {byCountry.filter((c) => c.code !== '??').length} countries</span></div>
+          {!byCountry.length ? <Empty text="No users yet." /> : (
+            <div className="country-bars">
+              {byCountry.slice(0, 10).map((c) => (
+                <div className="cbar" key={c.code}>
+                  <span className="cbar-name">{c.code !== '??' ? <Flag country={{ iso: c.code.toLowerCase(), flag: '' }} /> : '🌐'} {c.name}</span>
+                  <span className="cbar-track"><span className="cbar-fill grow-x" style={{ width: (c.n / maxC) * 100 + '%' }} /></span>
+                  <b>{c.n}</b><span className="muted small">{Math.round((c.n / db.users.length) * 100)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="muted small">Country is detected from the user's IP address when they sign up or log in.</p>
+        </div>
+        <div className="card">
           <h3>Top services</h3>
           {!top.length ? <Empty text="No orders yet." /> : top.map(([name, n]) => (
             <div className="list-row" key={name}><div className="grow">{name}</div><b>{n}</b></div>
@@ -130,15 +153,16 @@ function Users({ db }) {
       <input className="input search" placeholder="🔍 Search by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>User</th><th>Balance</th><th>Orders</th><th>Joined</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>User</th><th>Country</th><th>Balance</th><th>Orders</th><th>Joined</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {list.map((x) => (
               <tr key={x.id}>
                 <td><b>{x.name}</b><div className="muted small">{x.email}</div></td>
+                <td className="small">{x.countryCode ? <><Flag country={{ iso: x.countryCode.toLowerCase(), flag: '' }} /> {x.country}</> : '—'}{x.lastIp && <div className="muted mono">{x.lastIp}</div>}</td>
                 <td>{money(x.balance)}</td>
                 <td>{db.orders.filter((o) => o.userId === x.id).length}</td>
                 <td className="small">{fmtDate(x.createdAt)}</td>
-                <td><Badge s={x.banned ? 'banned' : 'active'} /></td>
+                <td><Badge s={x.banned ? 'banned' : 'active'}>{x.banned ? 'suspended' : 'active'}</Badge></td>
                 <td className="btn-row">
                   <button className="btn ghost sm" onClick={() => { setEdit(x.id); setAmt(''); setNote('') }}>Manage</button>
                 </td>
@@ -151,7 +175,10 @@ function Users({ db }) {
         <Modal title={u.name} onClose={() => setEdit(null)}>
           <ul className="info-list">
             <li><span>Email</span><b>{u.email}</b></li>
-            <li><span>Password</span><b className="mono">{u.password}</b></li>
+            <li><span>Country</span><b>{u.country || '—'}</b></li>
+            <li><span>Last IP</span><b className="mono">{u.lastIp || '—'}</b></li>
+            <li><span>Devices logged in</span><b>{(u.sessions || []).length}</b></li>
+            <li><span>Status</span><b className={u.banned ? 'neg' : 'pos'}>{u.banned ? 'Suspended' + (u.suspendedAt ? ' · ' + fmtDate(u.suspendedAt) : '') : 'Active'}</b></li>
             <li><span>Balance</span><b>{money(u.balance)}</b></li>
             <li><span>Referral code</span><b className="mono">{u.refCode}</b></li>
             <li><span>Referred by</span><b>{db.users.find((r) => r.id === u.referredBy)?.email || '—'}</b></li>
@@ -164,7 +191,8 @@ function Users({ db }) {
             <button className="btn full">Apply</button>
           </form>
           <div className="btn-row" style={{ marginTop: 12 }}>
-            <button className="btn ghost sm" onClick={() => toggleBan(u.id)}>{u.banned ? 'Unban user' : 'Ban user'}</button>
+            <button className={'btn sm ' + (u.banned ? '' : 'danger')} onClick={() => { toggleBan(u.id); toast(u.banned ? 'Account reactivated' : 'Account suspended — the user is signed out everywhere') }}>{u.banned ? '✅ Reactivate account' : '⛔ Suspend account'}</button>
+            {(u.sessions || []).length > 0 && <button className="btn ghost sm" onClick={() => { adminLogoutAllDevices(u.id); toast('User logged out of all devices') }}>Log out all devices</button>}
             <button className="btn danger sm" onClick={() => { if (confirm('Delete this user permanently?')) { deleteUser(u.id); setEdit(null); toast('User deleted') } }}>Delete user</button>
           </div>
         </Modal>
@@ -195,7 +223,7 @@ function Orders({ db }) {
                   <td className="small">{email(o.userId)}</td>
                   <td>{o.icon} {o.service}<div className="muted small"><Flag id={o.countryId} /> {o.country}</div></td>
                   <td className="mono">{o.number}<div className="muted small">{o.live ? `🔌 ${o.providerName} #${o.providerOrderId}` : 'demo'}</div></td>
-                  <td>{money(o.price)}</td>
+                  <td>{money(o.paid ?? o.price)}</td>
                   <td className="mono">{o.sms[o.sms.length - 1]?.code || '—'}</td>
                   <td><Badge s={o.status} />{o.rented && <div className="muted small">📅 rented until {new Date(o.expiresAt).toLocaleDateString()}</div>}</td>
                   <td className="small">{fmtDate(o.createdAt)}</td>
@@ -371,6 +399,12 @@ function ProviderForm({ value, onClose }) {
             </div>
           </fieldset>
         )}
+        <fieldset className="custom-box">
+          <legend>How this provider charges you</legend>
+          <label className="check"><input type="checkbox" checked={v.allowExtend !== false} onChange={(e) => setV({ ...v, allowExtend: e.target.checked })} /> Allow customers to extend these numbers (only if your provider supports extending; you pay the provider's extension fee)</label>
+          <label className="check"><input type="checkbox" checked={!!v.freeResend} onChange={(e) => setV({ ...v, freeResend: e.target.checked })} /> Second code is free with this provider — don't charge customers for Resend</label>
+          <p className="muted small">If a number isn't available, the customer sees "No numbers available right now" and is not charged.</p>
+        </fieldset>
         <label className="check"><input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /> Enabled</label>
         <button className="btn full">Save provider</button>
       </form>
@@ -603,10 +637,37 @@ function Transactions({ db }) {
   )
 }
 
+function NoticeCard({ db }) {
+  const n = activeNotice(db)
+  const [text, setText] = useState('')
+  const [tone, setTone] = useState('info')
+  return (
+    <form className="card form" onSubmit={(e) => { e.preventDefault(); if (attempt(() => postNotice(text, tone, 24), 'Notice posted for 24 hours')) setText('') }}>
+      <h3>📢 Notice for all users (24 hours)</h3>
+      {n && (
+        <div className={'notice-preview ' + n.tone}>
+          <div className="small"><b>Live now</b> · ends {fmtDate(n.until)}</div>
+          <div>{n.text}</div>
+          <button type="button" className="btn danger sm" onClick={() => { clearNotice(); toast('Notice removed') }}>Remove now</button>
+        </div>
+      )}
+      <textarea className="input" rows="3" maxLength={200} placeholder="e.g. WhatsApp numbers are back in stock! / Maintenance tonight 2–3 AM." value={text} onChange={(e) => setText(e.target.value)} />
+      <div className="chips tight">
+        {[['info', 'ℹ️ Info'], ['success', '✅ Good news'], ['warn', '⚠️ Warning']].map(([k, l]) => (
+          <button type="button" key={k} className={'chip' + (tone === k ? ' on' : '')} onClick={() => setTone(k)}>{l}</button>
+        ))}
+      </div>
+      <button className="btn full">{n ? 'Replace notice' : 'Post notice'} (24 hours)</button>
+      <p className="muted small">Appears as a small bar at the top of the site for everyone and disappears automatically after 24 hours.</p>
+    </form>
+  )
+}
+
 function Settings({ db }) {
   const s = db.settings
   const [f, setF] = useState({ areaCodeFeePct: s.areaCodeFeePct ?? 20, maxQty: s.maxQty ?? 10, siteName: s.siteName, announcement: s.announcement, minRecharge: s.minRecharge, referralPercent: s.referralPercent, orderMinutes: s.orderMinutes, extendMinutes: s.extendMinutes })
   const [pm, setPm] = useState(s.paymentMethods)
+  const [tg, setTg] = useState(s.telegramSupport || '')
   const [av, setAv] = useState({ autoVerify: s.autoVerify ?? true, minConfirmations: s.minConfirmations ?? 3, bscRpc: s.bscRpc || '', tronApiKey: s.tronApiKey || '' })
   const [plans, setPlans] = useState(s.rentPlans || [])
   const [shortMult, setShortMult] = useState(s.extendMult ?? 0.5)
@@ -618,6 +679,19 @@ function Settings({ db }) {
     <>
       <h1>Settings</h1>
       <div className="grid-2">
+        <div className="form" style={{ gap: 20 }}>
+          <NoticeCard db={db} />
+          <form className="card form" onSubmit={(e) => {
+            e.preventDefault()
+            let url = tg.trim()
+            if (url && !/^https?:\/\//.test(url)) url = 'https://t.me/' + url.replace(/^@/, '').replace(/^t\.me\//, '')
+            saveSettings({ telegramSupport: url }); setTg(url); toast(url ? 'Telegram support link saved' : 'Telegram link removed')
+          }}>
+            <h3>✈️ Telegram support</h3>
+            <p className="muted small">Shown on every user's Overview instead of "Get help". Paste your Telegram username or link.</p>
+            <input className="input" placeholder="@yoursupport or https://t.me/yoursupport" value={tg} onChange={(e) => setTg(e.target.value)} />
+            <button className="btn full">Save Telegram link</button>
+          </form>
         <form className="card form" onSubmit={(e) => { e.preventDefault(); saveSettings(f); toast('Settings saved') }}>
           <h3>General</h3>
           <label>Site name<input className="input" value={f.siteName} onChange={(e) => setF({ ...f, siteName: e.target.value })} /></label>
@@ -630,6 +704,7 @@ function Settings({ db }) {
           <label>Max numbers per purchase<input className="input" type="number" min="1" max="100" value={f.maxQty} onChange={num('maxQty')} /></label>
           <button className="btn full">Save settings</button>
         </form>
+        </div>
         <div>
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
