@@ -99,7 +99,7 @@ function Overview({ db, user, orders }) {
           : <a href="#/dashboard/support" className="btn ghost">🎧 Support</a>}
       </div>
       <div className="row-between"><h2 className="h2">Your active numbers</h2>{active.length > 0 && <span className="muted small">{active.length} active</span>}</div>
-      {active.length ? <CompactOrders orders={active} /> : <Empty icon="📲" text="No active numbers. Buy or rent one to receive SMS codes." />}
+      {active.length ? <OverviewNumbers orders={active} /> : <Empty icon="📲" text="No active numbers. Buy or rent one to receive SMS codes." />}
       <h2 className="h2">Recent orders</h2>
       <OrderTable orders={orders.slice(0, 5)} />
     </>
@@ -135,6 +135,17 @@ function CompactOrders({ orders }) {
   )
 }
 
+function OverviewNumbers({ orders }) {
+  const sp = useSearchPages(orders, 5)
+  return (
+    <>
+      {orders.length > 5 && <SearchBar sp={sp} placeholder="Search your numbers" />}
+      {sp.total ? <CompactOrders orders={sp.items} /> : <Empty icon="🔍" text="No number matches your search." />}
+      <Pager sp={sp} />
+    </>
+  )
+}
+
 // search + pages for long lists of numbers
 function useSearchPages(list, perPage = 6) {
   const [q, setQ] = useState('')
@@ -163,6 +174,7 @@ function Pager({ sp }) {
         <button key={n} className={'chip' + (n === sp.page ? ' on' : '')} onClick={() => sp.setPage(n)}>{n}</button>
       ))}
       <button className="btn ghost sm" disabled={sp.page >= sp.pages} onClick={() => sp.setPage(sp.page + 1)}>Next →</button>
+      <span className="muted small">Page {sp.page} of {sp.pages}</span>
     </div>
   )
 }

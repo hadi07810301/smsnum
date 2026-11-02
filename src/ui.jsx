@@ -116,7 +116,7 @@ export const avatarColor = (id) => {
 
 // ---------- simple captcha (letters + numbers, drawn on a canvas) ----------
 const CAPTCHA_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
-export const newCaptcha = () => Array.from({ length: 5 }, () => CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)]).join('')
+export const newCaptcha = () => Array.from({ length: 4 }, () => CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)]).join('')
 export const captchaOk = (code, input) => String(input || '').trim().toUpperCase() === code
 
 export function Captcha({ code, value, onChange, onRefresh }) {
@@ -132,28 +132,28 @@ export function Captcha({ code, value, onChange, onRefresh }) {
     const dark = document.documentElement.dataset.theme === 'dark'
     g.fillStyle = dark ? '#1a2723' : '#eef2f0'
     g.fillRect(0, 0, W, H)
-    for (let i = 0; i < 5; i++) { // noise lines
+    for (let i = 0; i < 2; i++) { // light noise lines
       g.strokeStyle = `hsla(${Math.random() * 360},45%,${dark ? 60 : 45}%,.45)`
       g.lineWidth = 1 + Math.random()
       g.beginPath(); g.moveTo(Math.random() * W, Math.random() * H); g.bezierCurveTo(Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H); g.stroke()
     }
     ;[...code].forEach((ch, i) => {
       g.save()
-      g.translate(16 + i * 27, 32 + (Math.random() * 8 - 4))
-      g.rotate((Math.random() - 0.5) * 0.6)
-      g.font = `bold ${24 + Math.floor(Math.random() * 5)}px ui-monospace, Menlo, monospace`
+      g.translate(18 + i * 32, 34 + (Math.random() * 4 - 2))
+      g.rotate((Math.random() - 0.5) * 0.25)
+      g.font = `bold 28px ui-monospace, Menlo, monospace`
       g.fillStyle = `hsl(${150 + Math.random() * 80},55%,${dark ? 70 : 28}%)`
       g.fillText(ch, 0, 0)
       g.restore()
     })
-    for (let i = 0; i < 40; i++) { g.fillStyle = dark ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.18)'; g.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5) }
+    for (let i = 0; i < 12; i++) { g.fillStyle = dark ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.18)'; g.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5) }
   }, [code])
   return (
     <label>Security check
       <div className="captcha">
         <canvas ref={ref} style={{ width: 150, height: 48 }} role="img" aria-label="Captcha: type the characters shown" />
         <button type="button" className="icon-btn" onClick={onRefresh} title="New code" aria-label="New captcha">↻</button>
-        <input className="input mono" placeholder="Type the code" autoComplete="off" autoCapitalize="characters" spellCheck="false" maxLength={5}
+        <input className="input mono" placeholder="Type the 4 characters" autoComplete="off" autoCapitalize="characters" spellCheck="false" maxLength={4}
           value={value} onChange={(e) => onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} required />
       </div>
     </label>

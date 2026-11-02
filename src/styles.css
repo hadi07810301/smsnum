@@ -731,3 +731,4 @@ html, body { overflow-x: clip; max-width: 100%; }
 .btn.shine::after, .btn::before, .ripple { pointer-events: none; }
 .btn.lg.shine:hover { filter: brightness(1.06); box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--primary) 65%, transparent); }
 .btn.lg.ghost:hover { box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--primary) 45%, transparent); }
+.captcha .input::placeholder { letter-spacing: normal; text-transform: none; font-weight: 400; }
