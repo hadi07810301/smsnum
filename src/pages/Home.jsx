@@ -55,7 +55,7 @@ export default function Home() {
         <h2 className="section-title reveal">How it works</h2>
         <div className="grid-3">
           {[
-            ['💳', '1. Top up your wallet', 'Recharge with USDT, Binance Pay, bKash or Nagad. Your balance never expires.'],
+            ['💳', '1. Top up your wallet', 'Recharge with USDT (BEP20 / TRC20) or Binance Pay. Crypto payments are added automatically.'],
             ['📲', '2. Pick a service & country', 'Choose WhatsApp, Telegram, Google and more. Get your number instantly.'],
             ['✅', '3. Receive the code', 'The SMS appears in your dashboard within seconds. No SMS? Full refund.'],
           ].map(([i, t, d], idx) => (

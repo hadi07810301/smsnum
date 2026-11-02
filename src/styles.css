@@ -631,3 +631,12 @@ label.check { display: flex; align-items: center; gap: 8px; }
 .rent-summary .info-list { margin: 0; }
 .rent-sum-head { display: flex; gap: 10px; align-items: center; }
 @media (max-width: 900px) { .rent-layout { grid-template-columns: 1fr; } .rent-summary { position: static; } }
+
+/* mobile: never allow sideways scrolling (clip keeps sticky header working) */
+html, body { overflow-x: clip; max-width: 100%; }
+.hero, .rent-hero { overflow: clip; }
+@media (max-width: 560px) {
+  .orb-a { right: 0; width: 150px; height: 150px; }
+  .orb-b { left: 0; width: 120px; height: 120px; }
+  .phone-wrap { max-width: 100%; }
+}
