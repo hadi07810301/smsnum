@@ -92,13 +92,37 @@ To run it as a real business you need to:
 
 All data logic lives in `src/store.js`, so you only need to replace those functions with API calls.
 
-## Run locally
+## Run on your computer (localhost)
+
+1. Install **Node.js 22 LTS** from https://nodejs.org (Vite 7 needs Node 20.19+ or 22.12+).
+2. Unzip the project, open a terminal **inside the project folder** and run:
 
 ```bash
-npm install
-npm run dev      # development server
-npm run build    # production build in /dist
+npm install        # first time only — downloads React and Vite
+npm run dev        # starts the site at http://localhost:5173
 ```
+
+3. Open http://localhost:5173 in your browser. Edits to files in `src/` show up instantly.
+
+Logins: admin → `http://localhost:5173/#/admin` (`admin` / `admin`), demo user → `demo@smsnum.com` / `demo123`.
+
+## Build & deploy
+
+```bash
+npm run build      # creates the finished website in the dist/ folder
+npm run preview    # optional: test the built site at http://localhost:4173
+```
+
+Upload **the contents of `dist/`** (not the folder itself) to your hosting:
+
+- **cPanel / shared hosting:** File Manager → `public_html` → Upload → upload everything inside `dist/`.
+- **Netlify:** app.netlify.com → Add new site → Deploy manually → drag the `dist` folder in.
+- **GitHub Pages:** push the contents of `dist/` to the `gh-pages` branch (Settings → Pages → branch `gh-pages`).
+- **Vercel:** import the GitHub repo; framework "Vite", build command `npm run build`, output `dist`.
+
+The site uses `#/` links (e.g. `/#/dashboard`), so it works on any host without server configuration, including in a sub-folder.
+
+> After uploading a new version, press **Ctrl + Shift + R** to skip the browser cache.
 
 ## Project structure
 
