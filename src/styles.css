@@ -723,3 +723,11 @@ html, body { overflow-x: clip; max-width: 100%; }
 .cbar-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--primary-2)); }
 .grow-x { transform-origin: left; animation: growX .9s var(--ease) both; }
 @keyframes growX { from { transform: scaleX(0); } }
+
+/* main buttons: calm, predictable hover. The button itself never moves, so the hover area is exactly the button. */
+.btn.lg { transition: box-shadow .25s var(--ease), background .2s, border-color .2s, color .2s, filter .2s; }
+.btn.lg:hover, .btn.lg:active { transform: none; }
+.btn.lg:not(.ghost):not(.light).shine { overflow: hidden; }          /* keep the light sweep inside the button */
+.btn.shine::after, .btn::before, .ripple { pointer-events: none; }
+.btn.lg.shine:hover { filter: brightness(1.06); box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--primary) 65%, transparent); }
+.btn.lg.ghost:hover { box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--primary) 45%, transparent); }

@@ -20,8 +20,8 @@ export default function Home() {
               Prices from <b>{money(isFinite(minPrice) ? minPrice : 0)}</b>, no subscription, and a full refund if a code doesn't arrive.
             </p>
             <div className="hero-cta rise" style={{ '--d': 3 }}>
-              <Link to="/buy" className="btn lg shine magnetic">Get a number <span className="arrow">→</span></Link>
-              <Link to="/rent" className="btn ghost lg magnetic">📅 Rent a number</Link>
+              <Link to="/buy" className="btn lg shine">Get a number <span className="arrow">→</span></Link>
+              <Link to="/rent" className="btn ghost lg">📅 Rent a number</Link>
             </div>
             <div className="hero-stats rise" style={{ '--d': 4 }}>
               <div><b><CountUp value={99} suffix="%" /></b><span>Successful delivery</span></div>
@@ -102,7 +102,7 @@ export default function Home() {
             <h2>Start verifying in under a minute</h2>
             <p>Create a free account, add funds and get your first number instantly.</p>
           </div>
-          <Link to="/register" className="btn lg light magnetic">Create account</Link>
+          <Link to="/register" className="btn lg light">Create account</Link>
         </div>
       </section>
     </>
