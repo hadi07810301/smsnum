@@ -4,7 +4,7 @@ import {
   useDB, currentUser, money, fmtDate, cancelOrder, extendOrder, extendOptions, canExtend, finishOrder, resendCode, resendCost, canResend, requestRecharge,
   transferBalance, regenerateApiKey, updateProfile, createTicket, replyTicket, closeTicket, logout,
 } from '../store.js'
-import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_ } from '../ui.jsx'
+import { Badge, Countdown, copy, Empty, Stat, attempt, Modal, Flag, toast as toast_, avatarColor } from '../ui.jsx'
 import { explorerTx } from '../chain.js'
 
 const TABS = [
@@ -36,7 +36,7 @@ export default function Dashboard() {
     <div className="container dash">
       <aside className="sidebar">
         <div className="side-user">
-          <div className="avatar">{user.name[0]?.toUpperCase()}</div>
+          <div className="avatar" style={{ background: avatarColor(user.id) }}>{user.name[0]?.toUpperCase()}</div>
           <div><b>{user.name}</b><div className="muted small">{user.email}</div></div>
         </div>
         {TABS.map(([k, i, l]) => (
@@ -47,7 +47,8 @@ export default function Dashboard() {
             )}
           </a>
         ))}
-        <button className="side-link" onClick={() => { logout(); navigate('/') }}><span>🚪</span>Logout</button>
+        <a className="side-link" href="#/login?add=1"><span>➕</span>Add account</a>
+        <button className="side-link" onClick={() => { const next = logout(); if (!next) navigate('/') }}><span>🚪</span>Sign out</button>
       </aside>
       <section className="dash-main tab-enter" key={tab}>
         <Page db={db} user={user} orders={orders} />

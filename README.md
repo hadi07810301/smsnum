@@ -18,6 +18,7 @@ A React website for selling temporary phone numbers that receive SMS verificatio
 **Website**
 - Home page, Buy Numbers (country filter + search), **Rent Numbers** (1–90 day rentals), API docs, Terms, Privacy
 - Sign up / log in, referral links (`#/register?ref=CODE`)
+- **Multiple accounts**: sign in to up to 5 accounts and switch from the avatar menu; each browser tab can use a different account at the same time
 - Dark mode, mobile bottom navigation
 
 **Buying numbers**

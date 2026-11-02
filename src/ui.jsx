@@ -106,3 +106,10 @@ export function Stat({ icon, label, value, tone }) {
     </div>
   )
 }
+
+// stable colour per account so accounts are easy to tell apart
+export const avatarColor = (id) => {
+  let h = 5381
+  for (const ch of String(id)) h = ((h << 5) + h + ch.charCodeAt(0)) | 0
+  return `hsl(${Math.abs(h) % 360} 58% 40%)`
+}

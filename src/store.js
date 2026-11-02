@@ -49,6 +49,8 @@ const SERVICES = [
 ].map(([name, icon, price], i) => ({ id: 's' + (i + 1), name, icon, price, enabled: true, stock: 50 + ((i * 37) % 400) }))
 
 function migrate(d) {
+  d.session ||= { userId: null, admin: false }
+  if (!Array.isArray(d.session.accounts)) d.session.accounts = d.session.userId ? [d.session.userId] : []
   d.providers ||= []
   d.settings.numberSource ||= 'demo'
   d.settings.activeProvider ||= null
@@ -163,7 +165,40 @@ export function resetDB() {
 export const money = (n) => '$' + Number(n || 0).toFixed(2)
 export const fmtDate = (t) => new Date(t).toLocaleString()
 export const priceFor = (service, country) => Math.round(service.price * country.mult * 100) / 100
-export const currentUser = (d = db) => d.users.find((u) => u.id === d.session.userId) || null
+// ---------- multiple accounts ----------
+// Signed-in accounts are kept in db.session.accounts. The active account is remembered per browser tab
+// (sessionStorage), so each tab can use a different account at the same time.
+const ACTIVE_KEY = 'smsnum_active_account'
+const MAX_ACCOUNTS = 5
+let activeId = (() => { try { return sessionStorage.getItem(ACTIVE_KEY) } catch { return null } })()
+function setActiveId(id) {
+  activeId = id
+  try { id ? sessionStorage.setItem(ACTIVE_KEY, id) : sessionStorage.removeItem(ACTIVE_KEY) } catch { /* ignore */ }
+}
+const signedIn = (d) => d.session.accounts || []
+export const currentUser = (d = db) => {
+  const ids = signedIn(d)
+  const id = activeId && ids.includes(activeId) ? activeId : ids.includes(d.session.userId) ? d.session.userId : null
+  return d.users.find((u) => u.id === id) || null
+}
+export const signedInAccounts = (d = db) => signedIn(d).map((id) => d.users.find((u) => u.id === id)).filter(Boolean)
+function activate(d, id) {
+  d.session.accounts = [id, ...signedIn(d).filter((x) => x !== id)].slice(0, MAX_ACCOUNTS)
+  d.session.userId = id
+  setActiveId(id)
+}
+export function switchAccount(id) {
+  return update((d) => {
+    if (!signedIn(d).includes(id)) throw new Error('That account is not signed in')
+    const u = d.users.find((x) => x.id === id)
+    if (!u) throw new Error('Account not found')
+    if (u.banned) throw new Error('This account has been suspended')
+    d.session.userId = id
+    setActiveId(id)
+    return u
+  })
+}
+export const logoutAll = () => update((d) => { d.session.accounts = []; d.session.userId = null; setActiveId(null) })
 
 function randNumber(country, areaCode) {
   const digits = country.code === '+852' ? 8 : country.code === '+62' ? 11 : 10
@@ -226,7 +261,7 @@ export function register({ name, email, password, ref }) {
       apiKey: 'sk_live_' + uid() + uid(), refEarnings: 0,
     }
     d.users.push(user)
-    d.session.userId = user.id
+    activate(d, user.id)
     return user
   })
 }
@@ -236,11 +271,19 @@ export function login(email, password) {
     const u = d.users.find((x) => x.email === email.trim().toLowerCase() && x.password === password)
     if (!u) throw new Error('Wrong email or password')
     if (u.banned) throw new Error('This account has been suspended. Contact support.')
-    d.session.userId = u.id
+    activate(d, u.id)
     return u
   })
 }
-export const logout = () => update((d) => { d.session.userId = null })
+// log out of the active account only; switches to the next signed-in account if there is one
+export const logout = () => update((d) => {
+  const cur = currentUser(d)
+  d.session.accounts = signedIn(d).filter((x) => x !== cur?.id)
+  const next = d.session.accounts[0] || null
+  d.session.userId = next
+  setActiveId(next)
+  return next ? d.users.find((u) => u.id === next) : null
+})
 
 export function adminLogin(user, pass) {
   return update((d) => {
@@ -613,7 +656,7 @@ export function adjustBalance(userId, amount, note) {
   })
 }
 export const toggleBan = (userId) => update((d) => { const u = d.users.find((x) => x.id === userId); u.banned = !u.banned })
-export const deleteUser = (userId) => update((d) => { d.users = d.users.filter((x) => x.id !== userId); if (d.session.userId === userId) d.session.userId = null })
+export const deleteUser = (userId) => update((d) => { d.users = d.users.filter((x) => x.id !== userId); d.session.accounts = signedIn(d).filter((x) => x !== userId); if (d.session.userId === userId) d.session.userId = null })
 
 export function saveService(s) {
   update((d) => {

@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePath, Link, navigate } from './router.jsx'
-import { useDB, currentUser, money, toggleTheme, logout } from './store.js'
-import { Toasts } from './ui.jsx'
+import { useDB, currentUser, money, toggleTheme, logout, logoutAll, switchAccount, signedInAccounts } from './store.js'
+import { Toasts, toast, attempt, avatarColor } from './ui.jsx'
 import Home from './pages/Home.jsx'
 import Buy from './pages/Buy.jsx'
 import Rent from './pages/Rent.jsx'
@@ -31,7 +31,7 @@ function Header() {
           {user ? (
             <>
               <a href="#/dashboard/recharge" key={user.balance} className="balance-pill bump" title="Recharge">💰 {money(user.balance)} <span>＋</span></a>
-              <button className="btn ghost sm hide-sm" onClick={() => { logout(); navigate('/') }}>Logout</button>
+              <AccountMenu user={user} />
             </>
           ) : (
             <>
@@ -42,6 +42,51 @@ function Header() {
         </div>
       </div>
     </header>
+  )
+}
+
+function AccountMenu({ user }) {
+  const db = useDB()
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const accounts = signedInAccounts(db)
+  const others = accounts.filter((a) => a.id !== user.id)
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const esc = (e) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc) }
+  }, [open])
+  const go = (fn) => { setOpen(false); fn() }
+  return (
+    <div className="acct" ref={ref}>
+      <button className="acct-btn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} title={user.email}>
+        <span className="avatar sm" style={{ background: avatarColor(user.id) }}>{user.name[0]?.toUpperCase()}</span>
+        {others.length > 0 && <span className="acct-count">{accounts.length}</span>}
+      </button>
+      {open && (
+        <div className="acct-menu" role="menu">
+          <div className="acct-current">
+            <span className="avatar" style={{ background: avatarColor(user.id) }}>{user.name[0]?.toUpperCase()}</span>
+            <div className="grow"><b>{user.name}</b><div className="muted small">{user.email}</div><div className="small pos">{money(user.balance)}</div></div>
+          </div>
+          <a className="acct-item" href="#/dashboard/profile" onClick={() => setOpen(false)}>👤 Manage account</a>
+          {others.length > 0 && <div className="acct-label">Switch account</div>}
+          {others.map((a) => (
+            <button key={a.id} className="acct-item acct-other" role="menuitem" onClick={() => go(() => { if (attempt(() => switchAccount(a.id))) toast('Switched to ' + a.name) })}>
+              <span className="avatar sm" style={{ background: avatarColor(a.id) }}>{a.name[0]?.toUpperCase()}</span>
+              <span className="grow"><b>{a.name}</b><span className="muted small block">{a.email}</span></span>
+              <span className="small muted">{money(a.balance)}</span>
+            </button>
+          ))}
+          {accounts.length < 5 && <a className="acct-item" href="#/login?add=1" onClick={() => setOpen(false)}>➕ Add another account</a>}
+          <div className="acct-sep" />
+          <button className="acct-item" role="menuitem" onClick={() => go(() => { const next = logout(); if (next) toast('Signed out. Switched to ' + next.name); else navigate('/') })}>🚪 Sign out{others.length ? ' of this account' : ''}</button>
+          {others.length > 0 && <button className="acct-item" role="menuitem" onClick={() => go(() => { logoutAll(); navigate('/'); toast('Signed out of all accounts') })}>⏏️ Sign out of all accounts</button>}
+        </div>
+      )}
+    </div>
   )
 }
 
