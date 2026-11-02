@@ -42,14 +42,14 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="marquee" aria-hidden="true">
+      <div className="container marquee-wrap"><div className="marquee" aria-hidden="true">
         <div className="marquee-track">
           {/* 4 copies so the strip is always wider than the screen (even 4K); it scrolls by half */}
           {[...db.services, ...db.services, ...db.services, ...db.services].map((s, i) => (
             <span className="marquee-item" key={i}>{s.icon} {s.name}</span>
           ))}
         </div>
-      </div>
+      </div></div>
 
       <section className="container section">
         <h2 className="section-title reveal">How it works</h2>

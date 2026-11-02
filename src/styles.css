@@ -736,3 +736,9 @@ html, body { overflow-x: clip; max-width: 100%; }
 .captcha-loading { width: 150px; height: 48px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
 .boot { min-height: 60vh; display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); }
 .bar.grow { flex: none; } /* the 'grow' animation class must not stretch the bar */
+
+/* services strip: same width as the page content, not the whole screen */
+.marquee-wrap { padding: 8px 0; }
+.marquee { border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
+.marquee::before { border-radius: 16px 0 0 16px; }
+.marquee::after { border-radius: 0 16px 16px 0; }
