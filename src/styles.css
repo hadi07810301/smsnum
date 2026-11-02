@@ -735,3 +735,4 @@ html, body { overflow-x: clip; max-width: 100%; }
 .captcha img { border-radius: 10px; border: 1px solid var(--border); flex-shrink: 0; background: #eef2f0; user-select: none; }
 .captcha-loading { width: 150px; height: 48px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
 .boot { min-height: 60vh; display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); }
+.bar.grow { flex: none; } /* the 'grow' animation class must not stretch the bar */
