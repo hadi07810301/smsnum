@@ -38,7 +38,7 @@ export function ApiDocs() {
     <div className="container section prose">
       <h1>API Documentation</h1>
       <p>Use the REST API to buy numbers and read SMS codes from your own software. Authenticate with your API key from the dashboard.</p>
-      <p className="note">ℹ️ This demo site runs without a backend, so these endpoints show the planned API format. Connect a server to make them live.</p>
+      <p className="note">ℹ️ The public developer API is coming soon. The formats below show how it will work.</p>
       <h3>Get balance</h3>
       <pre>{`GET /api/v1/balance
 Authorization: Bearer ${key}

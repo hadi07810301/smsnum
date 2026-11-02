@@ -3,7 +3,7 @@ import { usePath, navigate } from '../router.jsx'
 import {
   useDB, money, fmtDate, adminLogin, adminLogout, approveRecharge, rejectRecharge, adjustBalance, toggleBan, deleteUser, adminLogoutAllDevices,
   saveService, deleteService, saveCountry, deleteCountry, saveSettings, adminCancelOrder, replyTicket, closeTicket, toggleTheme, resetDB, priceFor,
-  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan, checkRecharge, postNotice, clearNotice, activeNotice,
+  saveProvider, deleteProvider, setActiveProvider, setNumberSource, testProvider, planCost, shortPlan, checkRecharge, postNotice, clearNotice, activeNotice, changeAdminLogin,
 } from '../store.js'
 import { explorerTx } from '../chain.js'
 import { PROVIDER_TYPES, emptyProvider } from '../providers.js'
@@ -191,7 +191,7 @@ function Users({ db }) {
             <button className="btn full">Apply</button>
           </form>
           <div className="btn-row" style={{ marginTop: 12 }}>
-            <button className={'btn sm ' + (u.banned ? '' : 'danger')} onClick={() => { toggleBan(u.id); toast(u.banned ? 'Account reactivated' : 'Account suspended — the user is signed out everywhere') }}>{u.banned ? '✅ Reactivate account' : '⛔ Suspend account'}</button>
+            <button className={'btn sm ' + (u.banned ? '' : 'danger')} onClick={() => { toggleBan(u.id); toast(u.banned ? 'Account reactivated' : 'Account suspended — the user can no longer use it') }}>{u.banned ? '✅ Reactivate account' : '⛔ Suspend account'}</button>
             {(u.sessions || []).length > 0 && <button className="btn ghost sm" onClick={() => { adminLogoutAllDevices(u.id); toast('User logged out of all devices') }}>Log out all devices</button>}
             <button className="btn danger sm" onClick={() => { if (confirm('Delete this user permanently?')) { deleteUser(u.id); setEdit(null); toast('User deleted') } }}>Delete user</button>
           </div>
@@ -607,7 +607,7 @@ function Tickets({ db }) {
           <form className="reply" onSubmit={(e) => { e.preventDefault(); if (attempt(() => replyTicket(t.id, reply, 'admin'), 'Reply sent')) setReply('') }}>
             <input className="input" placeholder="Reply as support…" value={reply} onChange={(e) => setReply(e.target.value)} />
             <button className="btn">Send</button>
-            {t.status !== 'closed' && <button type="button" className="btn ghost" onClick={() => closeTicket(t.id)}>Close</button>}
+            {t.status !== 'closed' && <button type="button" className="btn ghost" onClick={() => closeTicket(t.id, 'admin')}>Close</button>}
           </form>
         </Modal>
       )}
@@ -792,8 +792,8 @@ function Settings({ db }) {
           </form>
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
-            if (!cred.adminUser.trim() || cred.adminPass.length < 4) return toast('Username required, password at least 4 characters', 'error')
-            saveSettings(cred); setCred({ ...cred, adminPass: '' }); toast('Admin login updated')
+            if (!cred.adminUser.trim() || cred.adminPass.length < 6) return toast('Username required, password at least 6 characters', 'error')
+            attempt(() => changeAdminLogin(cred.adminUser, cred.adminPass), 'Admin login updated. Please log in again with the new password.')
           }}>
             <h3>Admin login</h3>
             <label>Username<input className="input" value={cred.adminUser} onChange={(e) => setCred({ ...cred, adminUser: e.target.value })} /></label>
@@ -803,7 +803,7 @@ function Settings({ db }) {
           <div className="card form">
             <h3>Danger zone</h3>
             <p className="muted small">Reset all data (users, orders, settings) back to the demo defaults.</p>
-            <button className="btn danger" onClick={() => { if (confirm('Reset ALL data?')) { resetDB(); toast('Data reset') } }}>Reset demo data</button>
+            <button className="btn danger" onClick={() => { if (confirm('Reset ALL data? Users, orders and settings go back to the demo defaults (a backup is saved on the server).')) attempt(resetDB, 'Data reset') }}>Reset demo data</button>
           </div>
         </div>
       </div>

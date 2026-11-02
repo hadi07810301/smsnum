@@ -732,3 +732,6 @@ html, body { overflow-x: clip; max-width: 100%; }
 .btn.lg.shine:hover { filter: brightness(1.06); box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--primary) 65%, transparent); }
 .btn.lg.ghost:hover { box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--primary) 45%, transparent); }
 .captcha .input::placeholder { letter-spacing: normal; text-transform: none; font-weight: 400; }
+.captcha img { border-radius: 10px; border: 1px solid var(--border); flex-shrink: 0; background: #eef2f0; user-select: none; }
+.captcha-loading { width: 150px; height: 48px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
+.boot { min-height: 60vh; display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); }

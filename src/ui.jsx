@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { useDB } from './store.js'
+import { useDB, fetchCaptcha } from './store.js'
 
 // ---------- toasts ----------
 let toasts = []
@@ -22,9 +22,14 @@ export function Toasts() {
 }
 
 // run an action and show errors as toasts
+// Run an action and show errors as toasts. Works for instant actions and for ones that wait for the server
+// (then it returns a promise that resolves to the result, or false on error).
 export function attempt(fn, okMsg) {
   try {
     const r = fn()
+    if (r && typeof r.then === 'function') {
+      return r.then((v) => { if (okMsg) toast(okMsg); return v ?? true }, (e) => { toast(e.message, 'error'); return false })
+    }
     if (okMsg) toast(okMsg)
     return r ?? true
   } catch (e) {
@@ -114,47 +119,31 @@ export const avatarColor = (id) => {
   return `hsl(${Math.abs(h) % 360} 58% 40%)`
 }
 
-// ---------- simple captcha (letters + numbers, drawn on a canvas) ----------
-const CAPTCHA_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
-export const newCaptcha = () => Array.from({ length: 4 }, () => CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)]).join('')
-export const captchaOk = (code, input) => String(input || '').trim().toUpperCase() === code
-
-export function Captcha({ code, value, onChange, onRefresh }) {
-  const ref = useRef(null)
+// ---------- captcha (made and checked by the server) ----------
+// Usage: const cap = useCaptcha(); <Captcha cap={cap} /> ; send cap.id and cap.value; call cap.refresh() after a try
+export function useCaptcha() {
+  const [state, setState] = useState({ id: '', svg: '', value: '', n: 0 })
   useEffect(() => {
-    const c = ref.current
-    if (!c) return
-    const dpr = window.devicePixelRatio || 1
-    const W = 150, H = 48
-    c.width = W * dpr; c.height = H * dpr
-    const g = c.getContext('2d')
-    g.scale(dpr, dpr)
-    const dark = document.documentElement.dataset.theme === 'dark'
-    g.fillStyle = dark ? '#1a2723' : '#eef2f0'
-    g.fillRect(0, 0, W, H)
-    for (let i = 0; i < 2; i++) { // light noise lines
-      g.strokeStyle = `hsla(${Math.random() * 360},45%,${dark ? 60 : 45}%,.45)`
-      g.lineWidth = 1 + Math.random()
-      g.beginPath(); g.moveTo(Math.random() * W, Math.random() * H); g.bezierCurveTo(Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H); g.stroke()
-    }
-    ;[...code].forEach((ch, i) => {
-      g.save()
-      g.translate(18 + i * 32, 34 + (Math.random() * 4 - 2))
-      g.rotate((Math.random() - 0.5) * 0.25)
-      g.font = `bold 28px ui-monospace, Menlo, monospace`
-      g.fillStyle = `hsl(${150 + Math.random() * 80},55%,${dark ? 70 : 28}%)`
-      g.fillText(ch, 0, 0)
-      g.restore()
-    })
-    for (let i = 0; i < 12; i++) { g.fillStyle = dark ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.18)'; g.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5) }
-  }, [code])
+    let live = true
+    fetchCaptcha().then((c) => live && setState((s) => ({ ...s, id: c.id, svg: c.svg }))).catch(() => live && setState((s) => ({ ...s, id: '', svg: '' })))
+    return () => { live = false }
+  }, [state.n])
+  return {
+    id: state.id, svg: state.svg, value: state.value,
+    setValue: (v) => setState((s) => ({ ...s, value: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) })),
+    refresh: () => setState((s) => ({ ...s, value: '', svg: '', n: s.n + 1 })),
+  }
+}
+export function Captcha({ cap }) {
   return (
     <label>Security check
       <div className="captcha">
-        <canvas ref={ref} style={{ width: 150, height: 48 }} role="img" aria-label="Captcha: type the characters shown" />
-        <button type="button" className="icon-btn" onClick={onRefresh} title="New code" aria-label="New captcha">↻</button>
+        {cap.svg
+          ? <img src={'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cap.svg)} width="150" height="48" alt="Security code: type the 4 characters shown" draggable="false" />
+          : <span className="captcha-loading"><span className="spinner" /></span>}
+        <button type="button" className="icon-btn" onClick={cap.refresh} title="New code" aria-label="New security code">↻</button>
         <input className="input mono" placeholder="Type the 4 characters" autoComplete="off" autoCapitalize="characters" spellCheck="false" maxLength={4}
-          value={value} onChange={(e) => onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} required />
+          value={cap.value} onChange={(e) => cap.setValue(e.target.value)} required />
       </div>
     </label>
   )

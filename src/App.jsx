@@ -150,6 +150,10 @@ function NoticeBar() {
   )
 }
 
+function OfflineBar() {
+  return <div className="notice-bar warn" role="alert"><div className="container notice-inner"><span>⚠️</span><span className="grow">Can't reach the server right now. Retrying automatically…</span></div></div>
+}
+
 function Footer() {
   const db = useDB()
   return (
@@ -192,7 +196,9 @@ export default function App() {
   useEffect(() => { document.documentElement.dataset.theme = db.theme }, [db.theme])
   useEffect(() => { document.title = db.settings.siteName + ' — Virtual Numbers for SMS Verification' }, [db.settings.siteName])
 
-  if (path.startsWith('/admin')) return (<><Admin /><Toasts /></>)
+  const waiting = !db.loaded && (path.startsWith('/admin') || path.startsWith('/dashboard'))
+  if (waiting) return <div className="boot"><span className="spinner" /> Loading…</div>
+  if (path.startsWith('/admin')) return (<>{db.offline && <OfflineBar />}<Admin /><Toasts /></>)
 
   let page
   if (path === '/') page = <Home />
@@ -210,6 +216,7 @@ export default function App() {
   return (
     <>
       <div className="scroll-progress" aria-hidden="true" />
+      {db.offline && <OfflineBar />}
       {db.settings.announcement && <div className="announce">{db.settings.announcement}</div>}
       <NoticeBar />
       <Header />

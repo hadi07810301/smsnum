@@ -515,7 +515,7 @@ function Transfer({ user }) {
   const [f, setF] = useState({ email: '', amount: '' })
   function submit(e) {
     e.preventDefault()
-    if (attempt(() => transferBalance(f.email, f.amount), 'Transfer complete')) setF({ email: '', amount: '' })
+    attempt(() => transferBalance(f.email, f.amount), 'Transfer complete').then((ok) => ok && setF({ email: '', amount: '' }))
   }
   return (
     <>
@@ -641,8 +641,8 @@ function Profile({ user }) {
   const db = useDB()
   const [name, setName] = useState(user.name)
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' })
-  const sessions = [...(user.sessions || [])].sort((a, b) => (b.sid === deviceId) - (a.sid === deviceId) || (b.lastSeen || 0) - (a.lastSeen || 0))
-  const others = sessions.filter((x) => x.sid !== deviceId)
+  const sessions = [...(user.sessions || [])].sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0) || (b.lastSeen || 0) - (a.lastSeen || 0))
+  const others = sessions.filter((x) => !x.current)
   return (
     <>
       <h1>Profile & security</h1>
@@ -658,7 +658,7 @@ function Profile({ user }) {
 
           <form className="card form" onSubmit={(e) => {
             e.preventDefault()
-            if (attempt(() => changePassword(pw), 'Password changed')) setPw({ current: '', next: '', confirm: '' })
+            attempt(() => changePassword(pw), 'Password changed').then((ok) => ok && setPw({ current: '', next: '', confirm: '' }))
           }}>
             <h3>Change password</h3>
             <label>Current password<input className="input" type="password" autoComplete="current-password" required value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></label>
@@ -685,11 +685,11 @@ function Profile({ user }) {
               <div className="device" key={x.sid}>
                 <span className="device-icon">{x.mobile ? '📱' : '💻'}</span>
                 <div className="grow">
-                  <b>{x.device || 'Unknown device'}</b> {x.sid === deviceId && <span className="badge ok">This device</span>}
+                  <b>{x.device || 'Unknown device'}</b> {x.current && <span className="badge ok">This device</span>}
                   <div className="muted small">{[x.country, x.ip].filter(Boolean).join(' · ') || 'Location unknown'}</div>
-                  <div className="muted small">Last active {x.sid === deviceId ? 'now' : fmtDate(x.lastSeen || x.at)} · signed in {fmtDate(x.at)}</div>
+                  <div className="muted small">Last active {x.current ? 'now' : fmtDate(x.lastSeen || x.at)} · signed in {fmtDate(x.at)}</div>
                 </div>
-                {x.sid !== deviceId && <button className="btn ghost sm" onClick={() => attempt(() => logoutDevice(x.sid), 'Device logged out')}>Log out</button>}
+                {!x.current && <button className="btn ghost sm" onClick={() => attempt(() => logoutDevice(x.sid), 'Device logged out')}>Log out</button>}
               </div>
             ))}
           </div>

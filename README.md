@@ -1,17 +1,19 @@
 # 📱 SMSNum — Virtual Numbers for SMS Verification
 
-A React website for selling temporary phone numbers that receive SMS verification codes, with a user dashboard and a full admin panel.
+A complete SMS-verification number website: React frontend + a small Node.js server that stores all data,
+handles logins, talks to your SMS number provider and verifies crypto payments.
 
-**Live demo:** https://hadi07810301.github.io/smsnum/
+**Runs on any cPanel hosting with "Setup Node.js App" (Node 18+). No database and no `npm install` needed.**
+See **[CPANEL-SETUP.md](CPANEL-SETUP.md)** for step-by-step hosting instructions.
 
 ## Logins
 
 | Role | Where | Username / Email | Password |
 |------|-------|------------------|----------|
-| Admin | `/#/admin` | `admin` | `admin` |
-| Demo user | `/#/login` | `demo@smsnum.com` | `demo123` |
+| Admin | `yoursite.com/#/admin` | `admin` | `admin` |
+| Demo user | `yoursite.com/#/login` | `demo@smsnum.com` | `demo123` |
 
-> Change the admin password in **Admin → Settings → Admin login** before sharing the site.
+> ⚠️ Change the admin password in **Admin → Settings → Admin login** right after you go live.
 
 ## Features
 
@@ -79,61 +81,56 @@ When a customer buys, the site requests a number from the provider, polls every 
 
 If the test shows "network or CORS blocked", deploy `proxy/worker.js` on Cloudflare Workers (free) and paste its URL into the provider's **Proxy URL**.
 
-> ⚠️ Until a backend is added, provider settings (including the API key) are saved only in the browser where you entered them, so live numbers only work in that browser. A backend should store the key and make provider calls for all customers.
+The provider API key is stored only on the server and is never sent to browsers (the admin panel shows it masked).
+Because the server makes the provider calls, no CORS proxy is needed (`proxy/worker.js` is only for special cases).
 
-## Important: this is a frontend demo
+## How it works
 
-All data is stored in the browser (`localStorage`), and incoming SMS codes are **simulated** (a fake code arrives 8–25 seconds after buying). This makes the site fully clickable on GitHub Pages without a server.
-
-To run it as a real business you need to:
-1. Build a backend (e.g. Node.js/Express or Laravel + a database) with real user accounts and secure admin login.
-2. Connect a real SMS number provider's API for buying numbers and receiving messages.
-3. Connect real payment verification.
-
-All data logic lives in `src/store.js`, so you only need to replace those functions with API calls.
+- **server/index.js** — the Node.js server (no dependencies). It serves the website from `dist/` and the API under `/api/`.
+- **data/db.json** — all data (users, orders, balances, settings). Written safely after every change; a daily copy is kept in `data/backups/` (last 7 days). **Back this folder up.**
+- Passwords are stored hashed (scrypt). Logins use random tokens per device, so "Logged-in devices" and "Log out" work across phones and PCs.
+- Captcha images are made and checked by the server. Login/sign-up attempts are rate-limited per IP.
+- Background jobs on the server deliver demo SMS, expire numbers (with refunds), poll your provider for codes and confirm USDT deposits.
+- `src/core.js` holds the business rules. The server uses it as the source of truth; the browser uses the same file to show results instantly.
 
 ## Run on your computer (localhost)
 
-1. Install **Node.js 22 LTS** from https://nodejs.org (Vite 7 needs Node 20.19+ or 22.12+).
-2. Unzip the project, open a terminal **inside the project folder** and run:
+**Just run it** (needs only Node.js 18+ from https://nodejs.org):
 
 ```bash
-npm install        # first time only — downloads React and Vite
-npm run dev        # starts the site at http://localhost:5173
+node app.cjs          # then open http://localhost:3000
 ```
 
-3. Open http://localhost:5173 in your browser. Edits to files in `src/` show up instantly.
-
-Logins: admin → `http://localhost:5173/#/admin` (`admin` / `admin`), demo user → `demo@smsnum.com` / `demo123`.
-
-## Build & deploy
+**Edit the website** (needs `npm install` once, for React + Vite):
 
 ```bash
-npm run build      # creates the finished website in the dist/ folder
-npm run preview    # optional: test the built site at http://localhost:4173
+npm install
+npm start             # terminal 1: the server on http://localhost:3000
+npm run dev           # terminal 2: live-reloading site on http://localhost:5173 (API calls go to the server)
+npm run build         # when finished: rebuilds dist/, which the server serves
 ```
 
-Upload **the contents of `dist/`** (not the folder itself) to your hosting:
+## Deploy
 
-- **cPanel / shared hosting:** File Manager → `public_html` → Upload → upload everything inside `dist/`.
-- **Netlify:** app.netlify.com → Add new site → Deploy manually → drag the `dist` folder in.
-- **GitHub Pages:** push the contents of `dist/` to the `gh-pages` branch (Settings → Pages → branch `gh-pages`).
-- **Vercel:** import the GitHub repo; framework "Vite", build command `npm run build`, output `dist`.
+Follow **[CPANEL-SETUP.md](CPANEL-SETUP.md)**. In short: upload the folder, create a Node.js app with startup file `app.cjs`, press Start.
 
-The site uses `#/` links (e.g. `/#/dashboard`), so it works on any host without server configuration, including in a sub-folder.
-
-> After uploading a new version, press **Ctrl + Shift + R** to skip the browser cache.
+Optional environment variables: `PORT` (set automatically by cPanel), `DATA_DIR` (where db.json lives), `DIST_DIR`,
+`ALLOWED_ORIGIN` (only if the website is hosted on a different domain than the server; then also set `window.SMSNUM_API` in index.html).
 
 ## Project structure
 
 ```
+app.cjs              cPanel startup file (starts server/index.js)
+server/
+  index.js           API, logins, storage, background jobs, static website
+  captcha.js         captcha images
 src/
-  App.jsx          layout, header, footer, routes
-  router.jsx       small hash router (works on GitHub Pages)
-  store.js         data + all business logic (replace with API calls)
-  ui.jsx           toasts, modal, badges, helpers
-  styles.css       all styles (light + dark theme)
-  pages/
-    Home.jsx  Buy.jsx  Rent.jsx  Auth.jsx  Legal.jsx
-    Dashboard.jsx  Admin.jsx
+  core.js            business rules (shared by server and browser)
+  providers.js       SMS provider APIs (SMS-Activate style, 5SIM, custom)
+  chain.js           USDT BEP20 / TRC20 deposit checks
+  store.js           browser side: talks to the server
+  App.jsx  ui.jsx  motion.jsx  router.jsx  styles.css
+  pages/             Home, Buy, Rent, Auth, Dashboard, Admin, Legal
+dist/                built website (served by the server)
+data/                created on first start: db.json + backups (keep private!)
 ```

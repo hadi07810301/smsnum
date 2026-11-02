@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, navigate } from '../router.jsx'
 import { useDB, login, register, switchAccount, signedInAccounts, currentUser } from '../store.js'
-import { attempt, toast, avatarColor, Captcha, newCaptcha, captchaOk } from '../ui.jsx'
+import { attempt, toast, avatarColor, Captcha, useCaptcha } from '../ui.jsx'
 
 export function Login() {
   const db = useDB()
@@ -10,19 +10,20 @@ export function Login() {
   const accounts = signedInAccounts(db)
   const cur = currentUser(db)
   const [f, setF] = useState({ email: '', password: '' })
-  const [cap, setCap] = useState(newCaptcha)
-  const [capIn, setCapIn] = useState('')
-  const refreshCap = () => { setCap(newCaptcha()); setCapIn('') }
-  function submit(e) {
+  const cap = useCaptcha()
+  const [busy, setBusy] = useState(false)
+  async function submit(e) {
     e.preventDefault()
-    if (!captchaOk(cap, capIn)) { toast('The security code is wrong. Please try again.', 'error'); refreshCap(); return }
     if (accounts.some((a) => a.email === f.email.trim().toLowerCase())) {
       const a = accounts.find((x) => x.email === f.email.trim().toLowerCase())
       if (attempt(() => switchAccount(a.id), 'Switched to ' + a.name)) navigate('/dashboard')
       return
     }
-    const u = attempt(() => login(f.email, f.password))
-    if (!u) refreshCap()
+    if (cap.value.length < 4) return toast('Type the 4 characters from the security image', 'error')
+    setBusy(true)
+    const u = await attempt(() => login(f.email, f.password, cap.id, cap.value))
+    setBusy(false)
+    if (!u) cap.refresh()
     if (u) { toast(adding ? `Added ${u.name}. You can switch accounts from the top bar.` : 'Welcome back!'); navigate('/dashboard') }
   }
   return (
@@ -45,8 +46,8 @@ export function Login() {
         )}
         <label>Email<input className="input" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
         <label>Password<input className="input" type="password" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
-        <Captcha code={cap} value={capIn} onChange={setCapIn} onRefresh={refreshCap} />
-        <button className="btn full">{adding ? 'Add account' : 'Log in'}</button>
+        <Captcha cap={cap} />
+        <button className="btn full" disabled={busy}>{busy ? <><span className="spinner light" /> Signing in…</> : adding ? 'Add account' : 'Log in'}</button>
         {!adding && <p className="muted small center">Demo account: <b>demo@smsnum.com</b> / <b>demo123</b></p>}
         <p className="center small">No account? <Link to="/register" className="link">Sign up</Link>{adding && <> · <a href="#/dashboard" className="link">Cancel</a></>}</p>
       </form>
@@ -57,15 +58,17 @@ export function Login() {
 export function Register() {
   const ref = new URLSearchParams(window.location.hash.split('?')[1] || '').get('ref') || ''
   const [f, setF] = useState({ name: '', email: '', password: '', confirm: '', ref })
-  const [cap, setCap] = useState(newCaptcha)
-  const [capIn, setCapIn] = useState('')
-  const refreshCap = () => { setCap(newCaptcha()); setCapIn('') }
-  function submit(e) {
+  const cap = useCaptcha()
+  const [busy, setBusy] = useState(false)
+  async function submit(e) {
     e.preventDefault()
-    if (!captchaOk(cap, capIn)) { toast('The security code is wrong. Please try again.', 'error'); refreshCap(); return }
     if (f.password !== f.confirm) { toast('Passwords do not match', 'error'); return }
-    if (attempt(() => register(f), 'Account created. Welcome!')) navigate('/dashboard')
-    else refreshCap()
+    if (cap.value.length < 4) return toast('Type the 4 characters from the security image', 'error')
+    setBusy(true)
+    const ok = await attempt(() => register({ ...f, captchaId: cap.id, captcha: cap.value }), 'Account created. Welcome!')
+    setBusy(false)
+    if (ok) navigate('/dashboard')
+    else cap.refresh()
   }
   return (
     <div className="auth-wrap">
@@ -77,8 +80,8 @@ export function Register() {
         <label>Password<input className="input" type="password" required minLength={6} autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
         <label>Confirm password<input className="input" type="password" required autoComplete="new-password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} /></label>
         <label>Referral code (optional)<input className="input" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /></label>
-        <Captcha code={cap} value={capIn} onChange={setCapIn} onRefresh={refreshCap} />
-        <button className="btn full">Create account</button>
+        <Captcha cap={cap} />
+        <button className="btn full" disabled={busy}>{busy ? <><span className="spinner light" /> Creating account…</> : 'Create account'}</button>
         <p className="center small">Already have an account? <Link to="/login" className="link">Log in</Link></p>
       </form>
     </div>
