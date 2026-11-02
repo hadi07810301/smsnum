@@ -640,3 +640,10 @@ html, body { overflow-x: clip; max-width: 100%; }
   .orb-b { left: 0; width: 120px; height: 120px; }
   .phone-wrap { max-width: 100%; }
 }
+/* services strip: full-width band, soft edge fades only on the moving items */
+.marquee { mask-image: none; -webkit-mask-image: none; position: relative; }
+.marquee::before, .marquee::after { content: ''; position: absolute; top: 0; bottom: 0; width: 60px; z-index: 1; pointer-events: none; }
+.marquee::before { left: 0; background: linear-gradient(90deg, var(--surface), transparent); }
+.marquee::after { right: 0; background: linear-gradient(-90deg, var(--surface), transparent); }
+.marquee-track { animation-duration: 80s; }
+@media (max-width: 560px) { .marquee::before, .marquee::after { width: 28px; } .marquee-track { animation-duration: 60s; } }

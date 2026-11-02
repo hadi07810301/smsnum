@@ -45,7 +45,8 @@ export default function Home() {
 
       <div className="marquee" aria-hidden="true">
         <div className="marquee-track">
-          {[...db.services, ...db.services].map((s, i) => (
+          {/* 4 copies so the strip is always wider than the screen (even 4K); it scrolls by half */}
+          {[...db.services, ...db.services, ...db.services, ...db.services].map((s, i) => (
             <span className="marquee-item" key={i}>{s.icon} {s.name}</span>
           ))}
         </div>
